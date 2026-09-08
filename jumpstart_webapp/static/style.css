@@ -1,0 +1,58 @@
+/* Extra polish on top of Tailwind (CDN) -- kept small on purpose. */
+
+body {
+    background: radial-gradient(circle at top, #111827 0%, #0b0f19 60%, #05070c 100%);
+}
+
+.jump-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(6px);
+}
+
+.step-dot {
+    transition: all 0.2s ease;
+}
+
+.log-panel {
+    font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.profile-chip {
+    cursor: pointer;
+    user-select: none;
+}
+
+.profile-chip input:checked + span {
+    background-color: #22c55e;
+    color: #052e16;
+    border-color: #22c55e;
+}
+
+.frame-wrap {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+}
+
+.frame-wrap img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
+    cursor: crosshair;
+}
+
+.marker-dot {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+} 
+.marker-label {
+    position: absolute;
+    left: 10px;
+    top: -8px;
+    pointer-events: none;
+}

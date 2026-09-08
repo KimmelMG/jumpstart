@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="nl" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title></title>
+    <link rel="stylesheet" href="/static/tailwind.min.css" />
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/htmx.min.js"></script>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:display_urn_x003a_schemas-microsoft-com_x003a_office_x003a_office_x0023_Editor msdt:dt="string">Kimmel, MG (bw)</mso:display_urn_x003a_schemas-microsoft-com_x003a_office_x003a_office_x0023_Editor>
+<mso:Order msdt:dt="string">9803800.00000000</mso:Order>
+<mso:ComplianceAssetId msdt:dt="string"></mso:ComplianceAssetId>
+<mso:_ExtendedDescription msdt:dt="string"></mso:_ExtendedDescription>
+<mso:display_urn_x003a_schemas-microsoft-com_x003a_office_x003a_office_x0023_Author msdt:dt="string">Kimmel, MG (bw)</mso:display_urn_x003a_schemas-microsoft-com_x003a_office_x003a_office_x0023_Author>
+<mso:TriggerFlowInfo msdt:dt="string"></mso:TriggerFlowInfo>
+<mso:ContentTypeId msdt:dt="string">0x01010033C2C253DFBE674080BCDBC5878188B3</mso:ContentTypeId>
+<mso:_SourceUrl msdt:dt="string"></mso:_SourceUrl>
+<mso:_SharedFileIndex msdt:dt="string"></mso:_SharedFileIndex>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
+</head>
+<body class="min-h-screen text-slate-100">
+    <div class="max-w-5xl mx-auto px-6 py-10">
+        <header class="mb-10 flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight text-white">Jumpstart</h1>
+                <p class="text-slate-400 mt-1">Sprongdetectie & RTP-parameters uit video</p>
+            </div>
+            <a href="/template" class="jump-card px-4 py-2 rounded-lg text-sm font-medium text-slate-200 hover:text-white hover:bg-white/10 transition">
+                Deelnemerstemplate downloaden
+            </a>
+        </header>
+
+        <!-- Stepper -->
+        <ol class="flex items-center gap-2 mb-10 text-sm text-slate-400">
+            <li class="flex items-center gap-2"><span class="step-dot w-6 h-6 rounded-full bg-emerald-500 text-slate-900 font-bold flex items-center justify-center">1</span> Deelnemers &amp; video's</li>
+            <li class="flex-1 h-px bg-slate-700 mx-2"></li>
+            <li class="flex items-center gap-2"><span class="step-dot w-6 h-6 rounded-full bg-slate-700 text-slate-300 font-bold flex items-center justify-center">2</span> Atleten toewijzen</li>
+            <li class="flex-1 h-px bg-slate-700 mx-2"></li>
+            <li class="flex items-center gap-2"><span class="step-dot w-6 h-6 rounded-full bg-slate-700 text-slate-300 font-bold flex items-center justify-center">3</span> Analyse & resultaten</li>
+        </ol>
+
+        <!-- Step 1: setup -->
+        <section class="jump-card rounded-2xl p-6 mb-8">
+            <h2 class="text-xl font-semibold text-white mb-4">1. Deelnemers &amp; video's</h2>
+            <form hx-post="/setup" hx-target="#videos-panel" hx-swap="innerHTML" hx-encoding="multipart/form-data" class="space-y-5">
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Ingevuld deelnemersbestand (.xlsx of .csv)</label>
+                    <input type="file" name="participants_file" required accept=".xlsx,.csv"
+                           class="block w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-600 file:text-white file:font-medium hover:file:bg-emerald-500 bg-white/5 rounded-lg" />
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Video's</label>
+                        <div class="flex flex-wrap gap-4 mb-3 text-sm">
+                        <label class="flex items-center gap-2"><input type="radio" name="video_mode" value="folder" checked onclick="toggleVideoMode()"> Map met video's (hele sessie in één keer)</label>
+                        <label class="flex items-center gap-2"><input type="radio" name="video_mode" value="files" onclick="toggleVideoMode()"> Losse videopaden</label>
+                        <label class="flex items-center gap-2"><input type="radio" name="video_mode" value="upload" onclick="toggleVideoMode()"> Video's uploaden</label>
+                    </div>
+                    <div id="video-mode-folder">
+                        <input type="text" name="video_folder" placeholder='C:\Videos\Session1'
+                               class="w-full bg-white/5 rounded-lg px-3 py-2 text-sm placeholder-slate-500 border border-white/10 focus:outline-none focus:border-emerald-500" />
+                        <label class="flex items-center gap-2 mt-2 text-sm text-slate-400">
+                            <input type="checkbox" name="recursive" value="1" checked> ook submappen doorzoeken
+                        </label>
+                    </div>
+                    <div id="video-mode-files" class="hidden">
+                        <textarea name="video_paths_text" rows="3" placeholder='C:\Videos\video1.mp4&#10;C:\Videos\video2.mp4'
+                                  class="w-full bg-white/5 rounded-lg px-3 py-2 text-sm placeholder-slate-500 border border-white/10 focus:outline-none focus:border-emerald-500"></textarea>
+                        <p class="text-xs text-slate-500 mt-1">Eén pad per regel.</p>
+                    </div>
+                                        <div id="video-mode-upload" class="hidden">
+                        <input type="file" name="video_files" multiple accept=".mp4,.mov,.m4v"
+                               class="block w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-600 file:text-white file:font-medium hover:file:bg-emerald-500 bg-white/5 rounded-lg" />
+                        <p class="text-xs text-slate-500 mt-1">Handig vanaf een telefoon/tablet -- grote bestanden kunnen even duren over wifi/mobiel internet.</p>
+                    </div>
+                </div>
+
+                <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 transition text-white font-medium px-5 py-2.5 rounded-lg">
+                    Deelnemers &amp; video's registreren
+                </button>
+            </form>
+        </section>
+
+        <div id="videos-panel"></div>
+        <div id="who-panel"></div>
+        <div id="analysis-panel"></div>
+    </div>
+
+    <script>
+                function toggleVideoMode() {
+            const mode = document.querySelector('input[name=video_mode]:checked').value;
+            document.getElementById('video-mode-folder').classList.toggle('hidden', mode !== 'folder');
+            document.getElementById('video-mode-files').classList.toggle('hidden', mode !== 'files');
+            document.getElementById('video-mode-upload').classList.toggle('hidden', mode !== 'upload');
+        }
+
+// -- /who/ click handling --------------------------------------
+function swapWhoPanel(html) {
+    const container = document.getElementById('who-panel');
+    container.innerHTML = html;
+    htmx.process(container); // activate hx-* attributes in the injected HTML (e.g. the analysis form)
+}
+
+function whoImageClick(evt, videoId) {
+    const img = evt.target;
+    const rect = img.getBoundingClientRect();
+    const scaleX = img.naturalWidth / rect.width;
+    const scaleY = img.naturalHeight / rect.height;
+    const x = (evt.clientX - rect.left) * scaleX;
+    const y = (evt.clientY - rect.top) * scaleY;
+    const checked = document.querySelector('input[name=participant_choice]:checked');
+    const participantId = checked ? checked.value : null;
+    const forceEl = document.getElementById('force-recal');
+    const forceRecalibrate = forceEl ? forceEl.checked : false;
+
+    fetch('/who/click', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({video_id: videoId, participant_id: participantId, x: x, y: y, force_recalibrate: forceRecalibrate})
+    }).then(r => r.text()).then(swapWhoPanel);
+}
+
+function whoAction(path) {
+    fetch(path, {method: 'POST'}).then(r => r.text()).then(swapWhoPanel);
+}
+
+        function toggleYoloOptions() {
+            const yolo = document.getElementById('pose-backend-select').value === 'yolo';
+            const box = document.getElementById('yolo-options');
+            if (box) box.classList.toggle('hidden', !yolo);
+        }
+
+        function toggleMediapipeOptions() {
+            const el = document.getElementById('pose-backend-select');
+            const mediapipe = el ? el.value === 'mediapipe' : true;
+            const box = document.getElementById('mediapipe-options');
+            if (box) box.classList.toggle('hidden', !mediapipe);
+        }
+    </script>
+</body>
+</html>

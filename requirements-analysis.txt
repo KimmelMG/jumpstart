@@ -1,0 +1,12 @@
+# Analyse- en pose-detectiepackages voor Jumpstart (groot, duurt het langst
+# om te installeren). Wordt gebruikt door Jumpstart_starten.bat; kan ook los
+# met
+#   pip install -r requirements-analysis.txt
+numpy
+scipy
+pandas
+mediapipe
+opencv-python
+matplotlib
+openpyxl
+ultralytics

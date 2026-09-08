@@ -1,0 +1,48 @@
+# Virtuele omgeving
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Model-bestanden (yolov8n-pose.pt download je automatisch via ultralytics
+# bij eerste gebruik; models/ met MediaPipe-model wordt niet meegenomen)
+yolov8n-pose.pt
+models/
+
+# Webapp runtime-data (per-sessie uploads, resultaten, caches -- geen broncode)
+jumpstart_webapp/_debug_csv/
+jumpstart_webapp/_detections_cache/
+jumpstart_webapp/_downloads/
+jumpstart_webapp/_frames/
+jumpstart_webapp/_sessions/
+jumpstart_webapp/_uploads/
+jumpstart_webapp/static/_to_delete/
+
+# Video's -- nooit committen
+*.mp4
+*.mov
+*.m4v
+*.avi
+*.mkv
+*.webm
+
+# Data-exports / debug-output
+*.xlsx
+*.csv
+!participant_template.xlsx
+
+# Oud / experimenteel / interne notities
+Archief/
+frame-skip-experiment-2026-08-21/
+manual-script/
+jumpstart/TODO.md
+jumpstart/format_conversion_test.py
+jumpstart/isolation_frame_test.py
+jumpstart/frame_cutter.py
+jumpstart/___All_Errors.txt
+test.txt
+Stand van zaken met code.docx
+Stappenplan_manual_script.docx
+
+.env

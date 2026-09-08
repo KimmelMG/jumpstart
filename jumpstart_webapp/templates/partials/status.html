@@ -1,0 +1,49 @@
+<div id="status-wrap" class="mt-6"
+     {% if job.status in ("queued", "running") %}hx-get="/status" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+
+{% if job.status in ("queued", "running", "done", "error") %}
+    <div class="flex items-center gap-2 mb-2">
+        {% if job.status == "queued" %}
+        <span class="w-2.5 h-2.5 rounded-full bg-sky-400 animate-pulse"></span>
+        <span class="text-sky-300 text-sm font-medium">
+            In de wachtrij (positie {{ job.queue_position }}) -- er loopt al een andere analyse, dit start automatisch zodra die klaar is.
+        </span>
+        {% elif job.status == "running" %}
+        <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+        <span class="text-amber-300 text-sm font-medium">Bezig...</span>
+        {% elif job.status == "done" %}
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+        <span class="text-emerald-300 text-sm font-medium">Klaar</span>
+        {% else %}
+        <span class="w-2.5 h-2.5 rounded-full bg-red-400"></span>
+        <span class="text-red-300 text-sm font-medium">Fout opgetreden</span>
+        {% endif %}
+    </div>
+
+    {% if job.status != "queued" %}
+    <div class="bg-black/60 rounded-lg p-4 text-xs text-emerald-300 log-panel max-h-80 overflow-y-auto border border-white/10">{{ job.log_lines|join("\n") }}</div>
+    {% endif %}
+
+    {% if job.status == "done" %}
+    <div class="mt-5 jump-card rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-white mb-2">Resultaten</h3>
+        <p class="text-slate-300 mb-3">{{ job.result_count }} sprong(en) gevonden, over {{ job.per_participant_counts|length }} atleet/atleten.</p>
+        {% if job.per_participant_counts %}
+        <table class="w-full text-sm mb-4">
+            <thead><tr class="text-left text-slate-400 border-b border-white/10"><th class="py-1">Deelnemer</th><th class="py-1">Aantal sprongen</th></tr></thead>
+            <tbody>
+                {% for pid, count in job.per_participant_counts.items() %}
+                <tr class="border-b border-white/5"><td class="py-1">{{ pid }}</td><td class="py-1">{{ count }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+        <a href="/download" class="inline-block bg-emerald-600 hover:bg-emerald-500 transition text-white font-medium px-5 py-2.5 rounded-lg">
+            Resultaten downloaden ({{ job.export_path.name if job.export_path else "" }})
+        </a>
+    </div>
+    {% elif job.status == "error" %}
+    <p class="text-red-400 text-sm mt-3">{{ job.error_message }}</p>
+    {% endif %}
+{% endif %}
+</div>

@@ -1,0 +1,8 @@
+# Webinterface-dependencies voor Jumpstart.
+# Wordt gebruikt door Jumpstart_starten.bat; kan ook los met
+#   pip install -r requirements-web.txt
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+qrcode
