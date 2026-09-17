@@ -18,9 +18,9 @@ command. The only intentional differences:
     min_flight_duration_s, max_match_speed_m_s, num_poses) are not
     exposed in the web UI (kept at the same defaults workflow_demo.py
     uses) -- use the CLI directly if you need to tune those.
-  - debug-CSV export and the MediaPipe model variant (lite/full) ARE
-    exposed (added 2026-08-14) -- see analysis_start's debug_csv and
-    mediapipe_variant form fields in app.py. Debug CSVs, when enabled,
+  - debug-CSV export IS exposed (added 2026-08-14) -- see
+    analysis_start's debug_csv form field in app.py. Debug CSVs, when
+    enabled,
     are written to jumpstart_webapp/_debug_csv/ (see state.py's
     DEBUG_CSV_DIR) using the exact same _write_debug_csv function the
     CLI uses (imported directly from workflow_demo.py rather than
@@ -44,8 +44,10 @@ from __future__ import annotations
 
 import shutil
 import traceback
+from collections import defaultdict
 from pathlib import Path
-from typing import Optional
+from statistics import mean, pstdev
+from typing import Dict, List, Optional
 
 from jumpstart.calc import (
     calculate_jump_parameters,
@@ -53,16 +55,14 @@ from jumpstart.calc import (
     implied_pixels_per_meter_for_jump,
 )
 from jumpstart.export import export_results
+from jumpstart.export.exporter import _write_debug_csv
 from jumpstart.identify import identify_athletes_in_video
 from jumpstart.io import get_recording_datetime
 from jumpstart.jumps import build_jumps_for_athlete
 from jumpstart.pose import (
-    create_pose_landmarker,
     create_yolo_pose_model,
-    detect_people,
     detect_people_yolo,
 )
-from jumpstart.workflow_demo import _write_debug_csv
 
 from jumpstart_webapp.state import DETECTIONS_CACHE_DIR, Job
 
@@ -77,19 +77,16 @@ DEFAULTS = dict(
     # removes a measured -0.108m jump-height bias and lifts CCC
     # against the manual reference from 0.21 to 0.78.
     refine_edges=True,
+    # Verplaatsings-onset (toegevoegd 2026-09-10, zie
+    # jumpstart/events/detector.py). "drop" legt het begin van de
+    # beweging op het eerste frame waarop de heup
+    # onset_drop_threshold_m onder de stahoogte is gezakt; de oude
+    # snelheidsdrempel ("velocity") lag gemiddeld 0.43s te vroeg.
+    onset_mode="drop",
+    onset_drop_threshold_m=0.008,
     num_poses=10,
     disk_space_margin_gb=2.0,
 )
-
-# Same URL-pattern trick noted in jumpstart/pose/detector.py's own
-# docstring: MediaPipe's lite/full/heavy pose landmarker variants share
-# the same download URL, differing only in this one path segment.
-MEDIAPIPE_FULL_MODEL_PATH = Path.home() / ".jumpstart" / "models" / "pose_landmarker_full.task"
-MEDIAPIPE_FULL_MODEL_URL = (
-    "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
-    "pose_landmarker_full/float16/1/pose_landmarker_full.task"
-)
-
 
 def _check_disk_space(job: Job, video_path: Path, min_extra_bytes: int) -> None:
     """Non-blocking version of workflow_demo._wait_for_disk_space.
@@ -115,7 +112,6 @@ def _detections_cache_path_for(
     video_path: Path,
     pose_backend: str,
     yolo_model_name: str,
-    mediapipe_variant: str,
     adaptive_skip_frames: Optional[int],
 ) -> Path:
     """Build the cache filename for one video + pose/frame-skip setting.
@@ -140,20 +136,83 @@ def _detections_cache_path_for(
     "20260611_S02_ipadH_C02_240fps_1080p"), which is unique and stable
     regardless of video order or which videos are included in a run.
     """
-    if pose_backend == "yolo":
-        backend_key = f"yolo-{yolo_model_name}"
-    else:
-        backend_key = f"mediapipe-{mediapipe_variant}"
+    backend_key = f"yolo-{yolo_model_name}"
     skip_key = f"skip{adaptive_skip_frames}" if adaptive_skip_frames else "noskip"
     safe_backend_key = backend_key.replace("/", "_")
     return DETECTIONS_CACHE_DIR / f"{video_path.stem}__{safe_backend_key}__{skip_key}.pkl"
+
+def build_results_summary(all_parameters: List) -> List[Dict]:
+    """Group JumpParameters per video, dan per atleet, voor het live
+    resultatenpaneel in de webapp (TODO.md, "Resultatenpaneel
+    uitbreiden", toegevoegd 2026-09-15).
+
+    Per atleet binnen een video: elke losse sprong (vluchttijd,
+    spronghoogte, time-to-takeoff, RSImod), plus -- alleen als er meer
+    dan 1 sprong is -- een gemiddelde +/- SD-rij erover. Zo is zowel de
+    per-sprong data (belangrijk bij clips, waar 1 sprong per video vaak
+    normaal is) als het per-persoon-per-video-gemiddelde (belangrijk bij
+    lange video's met meerdere sprongen per atleet) in één tabel
+    zichtbaar, zonder de Excel te hoeven downloaden. `rsi_modified` kan
+    NaN zijn (bij time_to_takeoff_s <= 0) -- die sprong telt dan niet
+    mee in het RSImod-gemiddelde.
+
+    Returns a list of dicts, one per video, each with a "participants"
+    list -- rechtstreeks bruikbaar in templates/partials/status.html.
+    """
+    by_video: Dict[str, Dict[str, list]] = defaultdict(lambda: defaultdict(list))
+    for parameters in all_parameters:
+        by_video[parameters.video][parameters.participant_id].append(parameters)
+
+    summary = []
+    for video_name in sorted(by_video.keys()):
+        participants_summary = []
+        for participant_id in sorted(by_video[video_name].keys()):
+            jumps = sorted(
+                by_video[video_name][participant_id], key=lambda p: p.jump_number
+            )
+            rows = [
+                {
+                    "jump_number": p.jump_number,
+                    "flight_time_s": p.flight_time_s,
+                    "jump_height_cm": p.jump_height_m * 100,
+                    "time_to_takeoff_s": p.time_to_takeoff_s,
+                    "rsi_modified": p.rsi_modified,
+                    "flagged": p.outside_physiological_bounds,
+                }
+                for p in jumps
+            ]
+            aggregate = None
+            if len(jumps) > 1:
+                flight_times = [p.flight_time_s for p in jumps]
+                heights_cm = [p.jump_height_m * 100 for p in jumps]
+                ttts = [p.time_to_takeoff_s for p in jumps]
+                rsis = [p.rsi_modified for p in jumps if p.rsi_modified == p.rsi_modified]
+                aggregate = {
+                    "n": len(jumps),
+                    "flight_time_mean": mean(flight_times),
+                    "flight_time_sd": pstdev(flight_times),
+                    "jump_height_mean": mean(heights_cm),
+                    "jump_height_sd": pstdev(heights_cm),
+                    "ttt_mean": mean(ttts),
+                    "ttt_sd": pstdev(ttts),
+                    "rsi_mean": mean(rsis) if rsis else float("nan"),
+                    "rsi_sd": pstdev(rsis) if len(rsis) > 1 else 0.0,
+                }
+            participants_summary.append(
+                {
+                    "participant_id": participant_id,
+                    "rows": rows,
+                    "aggregate": aggregate,
+                }
+            )
+        summary.append({"video": video_name, "participants": participants_summary})
+    return summary
 
 def run_analysis(
     job: Job,
     pose_backend: str,
     export_path: Path,
     yolo_model_name: str,
-    mediapipe_variant: str = "lite",
     debug_csv_dir: Optional[Path] = None,
     adaptive_skip_frames: Optional[int] = None,
     adaptive_dense_duration_s: float = 4.5,
@@ -164,14 +223,14 @@ def run_analysis(
     Args:
         job: The global Job (see state.py) -- session, who_assignments
             and participants must already be filled in.
-        pose_backend: "mediapipe" or "yolo".
+        pose_backend: altijd "yolo".
         export_path: Where to write the results spreadsheet.
         yolo_model_name: Only used when pose_backend == "yolo".
-        mediapipe_variant: "lite" (default, tested) or "full" (heavier,
+         "lite" (default, tested) or "full" (heavier,
             more accurate per MediaPipe's own claims -- NOT confirmed
             to matter on this project's footage, see
             jumpstart/pose/detector.py's module docstring). Only used
-            when pose_backend == "mediapipe".
+            when pose_backend == "mediapipe".mediapipe_variant:
         debug_csv_dir: If given, write one CSV per athlete/video here
             (same format/columns as the CLI's --debug-csv-dir, via
             workflow_demo._write_debug_csv). None (default) writes no
@@ -224,42 +283,15 @@ def run_analysis(
                 "dezelfde frame-skip-instelling bestaat -- een andere "
                 "instelling mist de cache gewoon en detecteert opnieuw)."
             )
-        if pose_backend == "yolo":
-            job.log(
-                "\n--- /pose/: laden YOLO-pose model "
-                f"({yolo_model_name}) -- NOG NIET GEVALIDEERD tegen "
-                "echte beelden, zie jumpstart/pose/detector_yolo.py ---"
-            )
-            yolo_model = create_yolo_pose_model(model_name=yolo_model_name)
+        job.log(f"\n--- /pose/: laden YOLO-pose model ({yolo_model_name}) ---")
+        yolo_model = create_yolo_pose_model(model_name=yolo_model_name)
 
-            def detect_fn(frame_bgr, _model=yolo_model):
-                # imgsz=480 (vs Ultralytics' own default 640) trades a little
-                # small/far-away-person accuracy for noticeably faster CPU
-                # inference -- see jumpstart/pose/detector_yolo.py's
-                # detect_people_yolo docstring. NEEDS REVIEW: not yet
-                # checked against real footage.
-                return detect_people_yolo(_model, frame_bgr, conf_threshold=0.25, imgsz=480)
-
-        elif mediapipe_variant == "full":
-            job.log(
-                "\n--- /pose/: laden MediaPipe pose landmarker "
-                "(full-variant, nauwkeuriger maar trager dan lite) ---"
-            )
-            landmarker = create_pose_landmarker(
-                MEDIAPIPE_FULL_MODEL_PATH,
-                num_poses=DEFAULTS["num_poses"],
-                model_url=MEDIAPIPE_FULL_MODEL_URL,
-            )
-
-            def detect_fn(frame_bgr, _landmarker=landmarker):
-                return detect_people(_landmarker, frame_bgr[:, :, ::-1])
-
-        else:
-            job.log("\n--- /pose/: laden MediaPipe pose landmarker (lite, standaard) ---")
-            landmarker = create_pose_landmarker(None, num_poses=DEFAULTS["num_poses"])
-
-            def detect_fn(frame_bgr, _landmarker=landmarker):
-                return detect_people(_landmarker, frame_bgr[:, :, ::-1])
+        def detect_fn(frame_bgr, _model=yolo_model):
+            # imgsz=480 (vs Ultralytics' own default 640) trades a little
+            # small/far-away-person accuracy for noticeably faster CPU
+            # inference -- see jumpstart/pose/detector_yolo.py's
+            # detect_people_yolo docstring.
+            return detect_people_yolo(_model, frame_bgr, conf_threshold=0.25, imgsz=480)
 
         all_parameters = []
         for video in session.videos:
@@ -297,7 +329,6 @@ def run_analysis(
                     video.path,
                     pose_backend,
                     yolo_model_name,
-                    mediapipe_variant,
                     adaptive_skip_frames,
                 )
                 if use_cache
@@ -344,9 +375,10 @@ def run_analysis(
                     track,
                     pixels_per_meter=pixels_per_meter,
                     tolerance_m_s2=DEFAULTS["tolerance_m_s2"],
-                    smoothing_window_s=DEFAULTS["smoothing_window_s"],
                     min_flight_duration_s=DEFAULTS["min_flight_duration_s"],
                     refine_edges=DEFAULTS["refine_edges"],
+                    onset_mode=DEFAULTS["onset_mode"],
+                    onset_drop_threshold_m=DEFAULTS["onset_drop_threshold_m"],
                 )
                 job.log(f"    {video.video_id}/{participant_id}: {len(jumps)} sprong(en) gevonden, /calc/...")
                 # Toegevoegd 2026-09-03: vangnet op de kalibratie --
@@ -390,15 +422,32 @@ def run_analysis(
                         )
                 participant = participants_by_id[participant_id]
                 for jump in jumps:
-                    all_parameters.append(
-                        calculate_jump_parameters(
-                            jump, track, participant,
-                            video_filename=video.path.name,
-                            recorded_at=recorded_at,
-                            pixels_per_meter=pixels_per_meter,
-                            pixels_per_meter_implied=implied_by_jump.get(jump.jump_number),
-                        )
+                    parameters = calculate_jump_parameters(
+                        jump, track, participant,
+                        video_filename=video.path.name,
+                        recorded_at=recorded_at,
+                        pixels_per_meter=pixels_per_meter,
+                        pixels_per_meter_implied=implied_by_jump.get(jump.jump_number),
                     )
+                    all_parameters.append(parameters)
+                    # Toegevoegd 2026-09-09: fysiologische-grenzenfilter,
+                    # zie jumpstart/calc/physiological_bounds.py. Vlaggen
+                    # alleen -- de rij blijft altijd in de export staan.
+                    if parameters.outside_physiological_bounds:
+                        job.log(
+                            f"    WAARSCHUWING {video.video_id}/{participant_id}: sprong "
+                            f"{jump.jump_number} heeft een vluchttijd van "
+                            f"{parameters.flight_time_s:.3f}s ({parameters.jump_height_m:.3f}m) "
+                            "-- buiten het fysiologisch mogelijke bereik, "
+                            "waarschijnlijk een detectiefout."
+                        )
+                    elif parameters.unusually_low_jump:
+                        job.log(
+                            f"    {video.video_id}/{participant_id}: sprong "
+                            f"{jump.jump_number} is opvallend laag "
+                            f"({parameters.jump_height_m:.3f}m) -- controleer of dit "
+                            "een echte sprong is of een detectiefout."
+                        )
                     with job.lock:
                         job.per_participant_counts[participant_id] = (
                             job.per_participant_counts.get(participant_id, 0) + 1
@@ -412,6 +461,7 @@ def run_analysis(
             with job.lock:
                 job.export_path = output_path
                 job.result_count = len(all_parameters)
+                job.results_summary = build_results_summary(all_parameters)
 
         job.log(f"\n--- /export/: {len(all_parameters)} sprong(en) totaal ---")
         job.log(f"Resultaten staan in: {export_path}")

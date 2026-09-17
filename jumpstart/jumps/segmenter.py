@@ -40,7 +40,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List
 
-from jumpstart.events.detector import detect_jumps_from_track
+from jumpstart.events.detector import (
+    ONSET_DROP_THRESHOLD_M,
+    detect_jumps_from_track,
+)
 from jumpstart.tracking.tracker import AthleteTrack
 
 # Below this many frames with an actual hip position, event detection
@@ -60,7 +63,6 @@ class Jump:
     """One identified jump for one athlete in one video.
 
     Attributes:
-        jump_id: Stable identifier, e.g. "V001-P002-J01".
         participant_id: Which athlete this jump belongs to.
         video_id: Which video this jump was detected in.
         jump_number: 1-based index of this jump within this
@@ -72,7 +74,6 @@ class Jump:
             need the original track.
     """
 
-    jump_id: str
     participant_id: str
     video_id: str
     jump_number: int
@@ -89,6 +90,8 @@ def build_jumps_for_athlete(
     smoothing_window_s: float = 7 / 120,
     min_flight_duration_s: float = 0.13,
     refine_edges: bool = True,
+    onset_mode: str = "drop",
+    onset_drop_threshold_m: float = ONSET_DROP_THRESHOLD_M,
 ) -> List[Jump]:
     """Detect and number every jump for one athlete's track.
 
@@ -139,16 +142,14 @@ def build_jumps_for_athlete(
         smoothing_window_s=smoothing_window_s,
         min_flight_duration_s=min_flight_duration_s,
         refine_edges=refine_edges,
+        onset_mode=onset_mode,
+        onset_drop_threshold_m=onset_drop_threshold_m,
     )
 
     jumps: List[Jump] = []
     for jump_number, events in enumerate(local_events, start=1):
         jumps.append(
             Jump(
-                jump_id=(
-                    f"{track.video_id}-{track.participant_id}-"
-                    f"J{jump_number:02d}"
-                ),
                 participant_id=track.participant_id,
                 video_id=track.video_id,
                 jump_number=jump_number,

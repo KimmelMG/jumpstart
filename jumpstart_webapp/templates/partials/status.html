@@ -28,19 +28,63 @@
     <div class="mt-5 jump-card rounded-xl p-5">
         <h3 class="text-lg font-semibold text-white mb-2">Resultaten</h3>
         <p class="text-slate-300 mb-3">{{ job.result_count }} sprong(en) gevonden, over {{ job.per_participant_counts|length }} atleet/atleten.</p>
-        {% if job.per_participant_counts %}
-        <table class="w-full text-sm mb-4">
-            <thead><tr class="text-left text-slate-400 border-b border-white/10"><th class="py-1">Deelnemer</th><th class="py-1">Aantal sprongen</th></tr></thead>
-            <tbody>
-                {% for pid, count in job.per_participant_counts.items() %}
-                <tr class="border-b border-white/5"><td class="py-1">{{ pid }}</td><td class="py-1">{{ count }}</td></tr>
+        {% if job.results_summary %}
+        <!-- Toegevoegd 2026-09-15 (TODO.md, "Resultatenpaneel uitbreiden"):
+             per video, per deelnemer de losse sprongen + (bij >1 sprong)
+             het gemiddelde +/- SD, zodat dit zichtbaar is zonder de
+             Excel te downloaden. Zie pipeline.build_results_summary. -->
+        <div class="space-y-4 mb-4">
+            {% for video_block in job.results_summary %}
+            <div class="border border-white/10 rounded-lg overflow-hidden">
+                <div class="bg-white/5 px-3 py-2 text-sm font-medium text-slate-200">{{ video_block.video }}</div>
+                {% for p in video_block.participants %}
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-slate-400 border-b border-white/10">
+                            <th class="py-1 px-3" colspan="5">{{ p.participant_id }}</th>
+                        </tr>
+                        <tr class="text-left text-slate-500 text-xs border-b border-white/5">
+                            <th class="py-1 px-3 font-normal">Sprong</th>
+                            <th class="py-1 px-3 font-normal">Vluchttijd (s)</th>
+                            <th class="py-1 px-3 font-normal">Spronghoogte (cm)</th>
+                            <th class="py-1 px-3 font-normal">TTT (s)</th>
+                            <th class="py-1 px-3 font-normal">RSImod</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in p.rows %}
+                        <tr class="border-b border-white/5{% if row.flagged %} text-red-300{% endif %}">
+                            <td class="py-1 px-3">{{ row.jump_number }}{% if row.flagged %} ⚠{% endif %}</td>
+                            <td class="py-1 px-3">{{ "%.3f"|format(row.flight_time_s) }}</td>
+                            <td class="py-1 px-3">{{ "%.1f"|format(row.jump_height_cm) }}</td>
+                            <td class="py-1 px-3">{{ "%.3f"|format(row.time_to_takeoff_s) }}</td>
+                            <td class="py-1 px-3">{{ "%.2f"|format(row.rsi_modified) if row.rsi_modified == row.rsi_modified else "--" }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% if p.aggregate %}
+                        <tr class="bg-emerald-900/20 font-medium">
+                            <td class="py-1 px-3">Gem. &plusmn; SD (n={{ p.aggregate.n }})</td>
+                            <td class="py-1 px-3">{{ "%.3f"|format(p.aggregate.flight_time_mean) }} &plusmn; {{ "%.3f"|format(p.aggregate.flight_time_sd) }}</td>
+                            <td class="py-1 px-3">{{ "%.1f"|format(p.aggregate.jump_height_mean) }} &plusmn; {{ "%.1f"|format(p.aggregate.jump_height_sd) }}</td>
+                            <td class="py-1 px-3">{{ "%.3f"|format(p.aggregate.ttt_mean) }} &plusmn; {{ "%.3f"|format(p.aggregate.ttt_sd) }}</td>
+                            <td class="py-1 px-3">{{ "%.2f"|format(p.aggregate.rsi_mean) }} &plusmn; {{ "%.2f"|format(p.aggregate.rsi_sd) }}</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
                 {% endfor %}
-            </tbody>
-        </table>
+            </div>
+            {% endfor %}
+        </div>
         {% endif %}
         <a href="/download" class="inline-block bg-emerald-600 hover:bg-emerald-500 transition text-white font-medium px-5 py-2.5 rounded-lg">
             Resultaten downloaden ({{ job.export_path.name if job.export_path else "" }})
         </a>
+        {% if job.debug_csv_run_dir %}
+        <a href="/download/debug_csv" class="inline-block ml-3 bg-slate-600 hover:bg-slate-500 transition text-white font-medium px-5 py-2.5 rounded-lg">
+            Debug-CSV's downloaden
+        </a>
+        {% endif %}
     </div>
     {% elif job.status == "error" %}
     <p class="text-red-400 text-sm mt-3">{{ job.error_message }}</p>

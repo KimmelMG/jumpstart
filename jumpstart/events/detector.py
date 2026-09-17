@@ -701,6 +701,97 @@ def _select_adaptive_baseline_window(
     return best_start, best_start + window
 
 
+# Hoeveel de heup onder de stahoogte moet zakken voordat de
+# countermovement als begonnen geldt (verplaatsings-onset, 2026-09-10).
+# Vervangt de snelheidsdrempel als standaard: die zette de drempel op
+# baseline_mean - 5*SD van het STILSTE 0,15s-venster, en die SD is op
+# een gesmoothed signaal ~7x kleiner dan de echte ruis, waardoor de
+# effectieve drempel op ~0,7 SD lag en de onset ~0,43 s te vroeg viel
+# (mediane heupverplaatsing op dat moment: 13 mm, in 19% van de
+# sprongen minder dan 5 mm). Zie claude/onset-detectie-diagnose-
+# 2026-09-10.md. 8 mm is de conventie van de beoordelaar: de eerst
+# zichtbare beweging van de heup uit de standfase.
+ONSET_DROP_THRESHOLD_M = 0.008
+
+
+def _find_start_of_movement_by_drop(
+    height_m: np.ndarray,
+    velocity: np.ndarray,
+    fps: float,
+    takeoff_index: int,
+    earliest_allowed_index: int = 0,
+    drop_threshold_m: float = ONSET_DROP_THRESHOLD_M,
+    max_lookback_s: float = 2.0,
+    rolling_window_s: float = 18 / 120,
+    smoothing_window_s: float = 7 / 120,
+) -> Optional[int]:
+    """Onset = eerste frame waarop de heup >= drop_threshold_m onder
+    de stahoogte is gezakt, gevonden door TERUG te lopen vanaf het
+    laagste punt van de countermovement.
+
+    Waarom terug vanaf het laagste punt en niet vooruit vanaf de
+    baseline: vooruit scannen accepteert het EERSTE dipje in een
+    venster van maximaal 2 s, dus een toevallige rimpel wint van het
+    echte begin van de beweging. Het laagste punt is eenduidig, en
+    tussen onset en dat laagste punt daalt de heup monotoon, dus de
+    drempel wordt op de terugweg precies een keer gekruist.
+
+    Args:
+        height_m: Hoogte-signaal (op-positief, meters) zoals
+            compute_kinematics dat teruggeeft -- RUW, dus hier zelf
+            gladgestreken voordat de drempel erop losgelaten wordt.
+        velocity: Snelheidssignaal, alleen gebruikt om via
+            _select_adaptive_baseline_window het stilste stukje te
+            vinden waaruit de STAHOOGTE komt (de mediane hoogte daar).
+            Let op: van dat venster wordt hier alleen de POSITIE
+            gebruikt, niet de SD -- juist die SD was het probleem.
+        fps: Frames per seconde.
+        takeoff_index: Takeoff-frame van deze sprong.
+        earliest_allowed_index: Niet verder terugkijken dan dit frame
+            (de landing van de vorige sprong).
+        drop_threshold_m: Zakking t.o.v. de stahoogte die als begin
+            van de beweging telt -- zie ONSET_DROP_THRESHOLD_M.
+        max_lookback_s: Hoever voor takeoff er gezocht mag worden.
+        rolling_window_s: Lengte van het kandidaat-baselinevenster.
+        smoothing_window_s: Savitzky-Golay-venster voor het gladstrijken
+            van de positie (zelfde parameter als de rest van de module;
+            de ruwe positieruis is mediaan 2,3 mm maar p90 11,9 mm, dus
+            zonder gladstrijken kan de ruis zelf de 8mm-drempel halen).
+
+    Returns:
+        Het onset-frame, of None als er binnen het zoekvenster nooit
+        meer dan drop_threshold_m gezakt wordt -- de aanroeper valt dan
+        terug op _find_start_of_movement.
+    """
+    lookback_frames = int(round(max_lookback_s * fps))
+    search_start = max(earliest_allowed_index, takeoff_index - lookback_frames)
+    if takeoff_index - search_start < 2:
+        return None
+
+    baseline_start, baseline_end = _select_adaptive_baseline_window(
+        velocity, search_start, takeoff_index,
+        fps=fps, rolling_window_s=rolling_window_s,
+    )
+    smoothed = _savgol_derivative(
+        np.asarray(height_m, dtype=float), fps, deriv=0,
+        window_duration_s=smoothing_window_s,
+    )
+    standing = float(np.median(smoothed[baseline_start:baseline_end]))
+
+    segment = smoothed[search_start:takeoff_index + 1]
+    if segment.size < 2:
+        return None
+    drop = standing - segment
+    bottom = int(np.argmax(drop))
+    if drop[bottom] < drop_threshold_m:
+        return None
+
+    index = bottom
+    while index > 0 and drop[index] >= drop_threshold_m:
+        index -= 1
+    return search_start + min(index + 1, bottom)
+
+
 def _find_start_of_movement(
     velocity: np.ndarray,
     takeoff_index: int,
@@ -802,6 +893,8 @@ def detect_jumps_from_track(
     min_flight_duration_s: float = 0.13,
     refine_edges: bool = True,
     refine_search_margin_s: float = REFINE_SEARCH_MARGIN_S,
+    onset_mode: str = "drop",
+    onset_drop_threshold_m: float = ONSET_DROP_THRESHOLD_M,
     onset_k: float = 5.0,
     onset_min_consecutive_s: float = 3 / 120,
     onset_baseline_window_s: float = 18 / 120,
@@ -884,7 +977,7 @@ def detect_jumps_from_track(
     # units -- see that function and the module docstring's
     # 2026-07-29 note for why this replaces smoothing once and then
     # calling np.gradient twice (noise amplification).
-    _height_m, velocity_m_s, acceleration_m_s2 = compute_kinematics(
+    height_m, velocity_m_s, acceleration_m_s2 = compute_kinematics(
         hip_y_px, fps, pixels_per_meter, smoothing_window_s=smoothing_window_s
     )
 
@@ -914,16 +1007,33 @@ def detect_jumps_from_track(
             takeoff_frame = max(window.start_index - 1, 0)
             landing_frame = min(window.end_index + 1, last_index)
 
-        start_index = _find_start_of_movement(
-            velocity_m_s,
-            takeoff_index=takeoff_frame,
-            earliest_allowed_index=previous_landing_frame,
-            fps=fps,
-            max_lookback_s=onset_max_lookback_s,
-            rolling_window_s=onset_baseline_window_s,
-            noise_multiplier=onset_k,
-            min_consecutive_s=onset_min_consecutive_s,
-        )
+        start_index = None
+        if onset_mode == "drop":
+            # Verplaatsings-onset (2026-09-10). Valt terug op de
+            # snelheidsdrempel als de heup binnen het zoekvenster
+            # nooit ver genoeg zakt.
+            start_index = _find_start_of_movement_by_drop(
+                height_m,
+                velocity_m_s,
+                fps,
+                takeoff_index=takeoff_frame,
+                earliest_allowed_index=previous_landing_frame,
+                drop_threshold_m=onset_drop_threshold_m,
+                max_lookback_s=onset_max_lookback_s,
+                rolling_window_s=onset_baseline_window_s,
+                smoothing_window_s=smoothing_window_s,
+            )
+        if start_index is None:
+            start_index = _find_start_of_movement(
+                velocity_m_s,
+                takeoff_index=takeoff_frame,
+                earliest_allowed_index=previous_landing_frame,
+                fps=fps,
+                max_lookback_s=onset_max_lookback_s,
+                rolling_window_s=onset_baseline_window_s,
+                noise_multiplier=onset_k,
+                min_consecutive_s=onset_min_consecutive_s,
+            )
         jumps.append(
             JumpEvents(
                 start_frame=start_index,

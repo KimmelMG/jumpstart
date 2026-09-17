@@ -32,6 +32,7 @@ from typing import Optional
 
 import numpy as np
 
+from jumpstart.calc.physiological_bounds import classify_flight_time
 from jumpstart.jumps.segmenter import Jump
 from jumpstart.profiles.models import Participant
 from jumpstart.tracking.tracker import AthleteTrack
@@ -84,6 +85,15 @@ class JumpParameters:
             jumpstart.calc.calibration_check). A large gap with
             pixels_per_meter means the calibration is off. None when
             the flight window was too short to estimate it.
+        outside_physiological_bounds: True when the flight time falls
+            outside what is physiologically possible (see
+            jumpstart.calc.physiological_bounds) -- almost certainly a
+            detection artifact, not a real jump. Flag only, never used
+            to drop the row.
+        unusually_low_jump: True when the jump is real but unusually
+            low for an athlete (see jumpstart.calc.physiological_bounds),
+            e.g. a return-to-play jump. Worth a second look, not an
+            error.
         countermovement_depth_px: Maximum downward hip displacement
             during the countermovement, in PIXELS -- not metres. Not
             a finished Tier 2 parameter: needs pixel-to-metre
@@ -115,6 +125,10 @@ class JumpParameters:
     # maken ze een verkeerde kalibratie meteen zichtbaar.
     pixels_per_meter: Optional[float] = None
     pixels_per_meter_implied: Optional[float] = None
+    # Toegevoegd 2026-09-09: fysiologische-grenzenfilter, zie
+    # jumpstart/calc/physiological_bounds.py.
+    outside_physiological_bounds: bool = False
+    unusually_low_jump: bool = False
     # Toegevoegd 2026-09-03: de px/m waarmee deze sprong is
     # doorgerekend, zodat achteraf in de export te zien is welke
     # kalibratie gebruikt is.
@@ -172,6 +186,10 @@ def calculate_jump_parameters(
         if time_to_takeoff_s > 0
         else float("nan")
     )
+    # Toegevoegd 2026-09-09: fysiologische-grenzenfilter, werkt op de
+    # vluchttijd -- zie jumpstart/calc/physiological_bounds.py voor de
+    # onderbouwing van de grenzen.
+    bounds_check = classify_flight_time(flight_time_s)
 
     frame_mask = (track.frame_indices >= jump.start_frame) & (
         track.frame_indices <= jump.takeoff_frame
@@ -219,4 +237,6 @@ def calculate_jump_parameters(
         peak_power_w=peak_power_w,
         pixels_per_meter=pixels_per_meter,
         pixels_per_meter_implied=pixels_per_meter_implied,
+        outside_physiological_bounds=bounds_check.outside_physiological_bounds,
+        unusually_low_jump=bounds_check.unusually_low_jump,
     )

@@ -29,25 +29,22 @@ Oorspronkelijke (nu achterhaalde) module-docstring, ter documentatie:
 from __future__ import annotations
 
 import queue
+import socket
 import threading
-import time
-import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 from jumpstart.io.video_input import VideoFile
 from jumpstart.profiles.models import Participant
 from jumpstart.session import Session
-from jumpstart.who.assignment import FrameAssignment
 
 BASE_DIR = Path(__file__).resolve().parent
 
 # Gedeelde, sessie-onafhankelijke mappen. DOWNLOADS_DIR blijft hier
 # alleen nog voor het (stateloze) deelnemers-sjabloon
-# (download_template in app.py) -- de daadwerkelijke resultaten per
-# sessie staan voortaan onder elke sessie se eigen map, zie
-# Job._SESSIONS_DIR/<session_id>/downloads hieronder.
+# (download_template in app.py).
 DOWNLOADS_DIR = BASE_DIR / "_downloads"
 # Detections-cache (2026-09-04): BEWUST gedeeld tussen alle sessies,
 # niet per sessie -- het is een pure prestatie-cache, keyed op
@@ -56,15 +53,49 @@ DOWNLOADS_DIR = BASE_DIR / "_downloads"
 # sessies die toevallig dezelfde video analyseren is alleen maar
 # winst, geen correctheidsrisico.
 DETECTIONS_CACHE_DIR = BASE_DIR / "_detections_cache"
-# Sessie-specifieke data (uploads, referentieframes, resultaten,
-# debug-CSV's) komt onder deze map, één submap per sessie-id -- zie
-# Job.__post_init__ hieronder. Dit voorkomt dat twee gelijktijdige
-# sessies elkaars geuploade bestanden, referentieframes (die anders
-# allebei "V001.jpg" zouden heten) of resultaatbestanden overschrijven.
+# UPDATE 2026-09-09 (TODO.md item 8): resultaat-Excels en debug-CSV's
+# stonden voorheen onder elke sessie se eigen map
+# (_sessions/<sessie-id>/downloads resp. .../debug_csv), wat het lastig
+# maakte om een specifieke run terug te vinden (welke sessie-map hoort
+# bij welke run?) om te tracken/exporteren. Nu staan ze in deze twee
+# GEDEELDE top-level mappen, elk met één submap per analyse-run,
+# genaamd "<datum>_<tijd>_<apparaatnaam>" (zie new_run_id hieronder) --
+# zo zie je in Verkenner meteen welke map van wanneer en van welk
+# apparaat is, en welke _results/-submap bij welke _debug_csv/-submap
+# hoort (dezelfde run-naam).
+RESULTS_DIR = BASE_DIR / "_results"
+DEBUG_CSV_DIR = BASE_DIR / "_debug_csv"
+# Sessie-specifieke data (uploads, referentieframes) komt onder deze
+# map, één submap per sessie-id -- zie Job.__init__ hieronder. Dit
+# voorkomt dat twee gelijktijdige sessies elkaars geuploade bestanden
+# of referentieframes (die anders allebei "V001.jpg" zouden heten)
+# overschrijven. Resultaten/debug-CSV's zijn sinds 2026-09-09 GEEN
+# sessie-map meer (zie RESULTS_DIR/DEBUG_CSV_DIR hierboven).
 SESSIONS_DIR = BASE_DIR / "_sessions"
 
-for _dir in (DOWNLOADS_DIR, DETECTIONS_CACHE_DIR, SESSIONS_DIR):
+for _dir in (DOWNLOADS_DIR, DETECTIONS_CACHE_DIR, RESULTS_DIR, DEBUG_CSV_DIR, SESSIONS_DIR):
     _dir.mkdir(exist_ok=True)
+
+
+def _device_name() -> str:
+    """Best-effort, mapnaam-veilige apparaatnaam voor new_run_id()."""
+    try:
+        name = socket.gethostname()
+    except Exception:
+        name = "onbekend-apparaat"
+    # Padseparators kunnen geen onderdeel van een mapnaam zijn; de rest
+    # van een hostnaam (spaties, koppeltekens, punten) is normaal veilig.
+    name = name.replace("/", "-").replace("\\", "-").strip()
+    return name or "onbekend-apparaat"
+
+
+def new_run_id() -> str:
+    """Eén label ("<datum>_<tijd>_<apparaatnaam>"), gedeeld door de
+    export-Excel en de debug-CSV's van DEZELFDE analyse-run (zie
+    /analysis/start in app.py) -- zo staan de bijbehorende submappen
+    onder RESULTS_DIR en DEBUG_CSV_DIR met exact dezelfde naam."""
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    return f"{timestamp}_{_device_name()}"
 
 
 @dataclass
@@ -103,6 +134,13 @@ class WhoClickState:
     # True als deze video via "Vorige video" opnieuw wordt gedaan --
     # dan geldt een herkalibratie ALLEEN voor deze video.
     is_redo: bool = False
+    # Toegevoegd 2026-09-09: index van het huidige referentieframe
+    # (uit extract_reference_frame resp. extract_frame_near) en het
+    # totaal aantal frames in de video -- nodig voor de "1s eerder/
+    # later"-knoppen in het /who/-paneel (schuiven als het frame op
+    # 50% van de video midden in een sprong valt).
+    frame_index: int = 0
+    total_frames: int = 0
     step: str = "hip"  # "hip" | "head" | "feet"
     pending_participant_id: Optional[str] = None
     pending_hip: Optional[Tuple[float, float]] = None
@@ -126,16 +164,16 @@ class Job:
         self.session_id = session_id
         self.lock = threading.Lock()
         # Eigen mappen voor deze sessie, zodat gelijktijdige sessies
-        # elkaars uploads/referentieframes/resultaten/debug-CSV's nooit
-        # kunnen overschrijven. Een korte prefix (eerste 8 tekens van
-        # de sessie-id) is genoeg -- de volledige id is 32 tekens (hex
-        # uuid4) en zou paden onnodig lang maken.
+        # elkaars uploads/referentieframes nooit kunnen overschrijven.
+        # Een korte prefix (eerste 8 tekens van de sessie-id) is genoeg
+        # -- de volledige id is 32 tekens (hex uuid4) en zou paden
+        # onnodig lang maken. Resultaten/debug-CSV's zijn sinds
+        # 2026-09-09 GEEN sessie-map meer, zie RESULTS_DIR/DEBUG_CSV_DIR
+        # bovenaan dit bestand en /analysis/start in app.py.
         session_dir = SESSIONS_DIR / session_id[:8]
         self.uploads_dir = session_dir / "uploads"
         self.frames_dir = session_dir / "frames"
-        self.downloads_dir = session_dir / "downloads"
-        self.debug_csv_dir = session_dir / "debug_csv"
-        for _dir in (self.uploads_dir, self.frames_dir, self.downloads_dir, self.debug_csv_dir):
+        for _dir in (self.uploads_dir, self.frames_dir):
             _dir.mkdir(parents=True, exist_ok=True)
         self.reset()
 
@@ -163,8 +201,21 @@ class Job:
         self.queue_position: int = 0
         self.log_lines: List[str] = []
         self.export_path: Optional[Path] = None
+        # Toegevoegd 2026-09-09: de DEBUG_CSV_DIR/<run_id>-map van de
+        # laatst gestarte run, alleen gezet als de debug-CSV-checkbox
+        # aanstond -- gebruikt door de /download/debug_csv-knop in
+        # status.html om te weten of er iets te downloaden is.
+        self.debug_csv_run_dir: Optional[Path] = None
         self.result_count: int = 0
         self.per_participant_counts: Dict[str, int] = {}
+        # Toegevoegd 2026-09-15 (TODO.md, "Resultatenpaneel uitbreiden"):
+        # per video, per deelnemer de losse sprongen (vluchttijd,
+        # spronghoogte, time-to-takeoff, RSImod) plus -- bij meer dan 1
+        # sprong -- het gemiddelde +/- SD, voor het live resultatenpaneel
+        # zonder de Excel te hoeven downloaden. Gevuld door
+        # pipeline.build_results_summary, zelfde moment als export_path/
+        # result_count hierboven.
+        self.results_summary: List[Dict] = []
         self.error_message: Optional[str] = None
 
     def log(self, text: str) -> None:
@@ -193,10 +244,6 @@ class JobManager:
                 job = Job(session_id)
                 self._jobs[session_id] = job
             return job
-
-    def count(self) -> int:
-        with self._lock:
-            return len(self._jobs)
 
 
 JOB_MANAGER = JobManager()

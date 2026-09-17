@@ -20,7 +20,7 @@
     </p>
 
     <div class="frame-wrap mb-4">
-        <img src="/frames/{{ who.video.video_id }}.jpg?t={{ who|id }}" onclick="whoImageClick(event, '{{ who.video.video_id }}')" />
+        <img src="/frames/{{ who.video.video_id }}.jpg?t={{ who.frame_index }}" onclick="whoImageClick(event, '{{ who.video.video_id }}')" />
         {% for m in markers %}
         <div class="marker-dot" style="left: {{ (m.hip[0] / who.frame_width_px * 100) }}%; top: {{ (m.hip[1] / who.frame_height_px * 100) }}%;">
             <div class="w-3 h-3 rounded-full bg-emerald-400 border-2 border-emerald-900"></div>
@@ -35,6 +35,12 @@
         </div>
         {% endif %}
         {% endfor %}
+    </div>
+
+    <div class="flex items-center gap-3 mb-4">
+        <button onclick="whoAction('/who/frame/shift?seconds=-1')" class="bg-white/10 hover:bg-white/20 transition text-slate-200 font-medium px-3 py-1.5 rounded-lg text-sm">&larr; 1s eerder</button>
+        <button onclick="whoAction('/who/frame/shift?seconds=1')" class="bg-white/10 hover:bg-white/20 transition text-slate-200 font-medium px-3 py-1.5 rounded-lg text-sm">1s later &rarr;</button>
+        <span class="text-xs text-slate-500">frame {{ who.frame_index }}{% if who.total_frames %} / {{ who.total_frames - 1 }}{% endif %} -- schuif als dit frame geen stabiele heuppositie laat zien (bv. midden in een sprong)</span>
     </div>
 
     {% if who.step == "hip" %}

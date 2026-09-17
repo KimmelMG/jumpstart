@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title></title>
     <link rel="stylesheet" href="/static/tailwind.min.css" />
-    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/style.css?v=20260915b" />
     <script src="/static/htmx.min.js"></script>
 
 <!--[if gte mso 9]><xml>
@@ -23,6 +23,16 @@
 </xml><![endif]-->
 </head>
 <body class="min-h-screen text-slate-100">
+    <!-- Watermerk (2026-09-15, TODO.md item 10): vast, vaag UMCG-logo +
+         naam op de achtergrond, zichtbaar op elk scherm van de webapp
+         (blijft staan bij HTMX-swaps, want die vervangen alleen de
+         binnenste panelen, niet <body> zelf). aria-hidden + pointer-
+         events:none zodat het geen invloed heeft op toegankelijkheid of
+         klikgedrag -- zie static/style.css voor de .watermark-stijl. -->
+    <div class="watermark" aria-hidden="true">
+        <img src="/static/umcg_logo.png" alt="" />
+        <span>Mathijs Kimmel</span>
+    </div>
     <div class="max-w-5xl mx-auto px-6 py-10">
         <header class="mb-10 flex items-center justify-between">
             <div>
@@ -53,24 +63,37 @@
                            class="block w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-600 file:text-white file:font-medium hover:file:bg-emerald-500 bg-white/5 rounded-lg" />
                 </div>
 
-                <div>
+                               <div>
                     <label class="block text-sm font-medium text-slate-300 mb-2">Video's</label>
-                        <div class="flex flex-wrap gap-4 mb-3 text-sm">
+                    <div class="flex flex-wrap gap-4 mb-3 text-sm">
                         <label class="flex items-center gap-2"><input type="radio" name="video_mode" value="folder" checked onclick="toggleVideoMode()"> Map met video's (hele sessie in één keer)</label>
                         <label class="flex items-center gap-2"><input type="radio" name="video_mode" value="files" onclick="toggleVideoMode()"> Losse videopaden</label>
                         <label class="flex items-center gap-2"><input type="radio" name="video_mode" value="upload" onclick="toggleVideoMode()"> Video's uploaden</label>
                     </div>
                     <div id="video-mode-folder">
-                        <input type="text" name="video_folder" placeholder='C:\Videos\Session1'
-                               class="w-full bg-white/5 rounded-lg px-3 py-2 text-sm placeholder-slate-500 border border-white/10 focus:outline-none focus:border-emerald-500" />
+                        <div class="flex gap-2">
+                            <input type="text" name="video_folder" id="video-folder-input" placeholder='C:\Videos\Session1'
+                                   class="flex-1 bg-white/5 rounded-lg px-3 py-2 text-sm placeholder-slate-500 border border-white/10 focus:outline-none focus:border-emerald-500" />
+                            <button type="button" onclick="browseFolder()" id="browse-folder-btn"
+                                    class="jump-card px-4 py-2 rounded-lg text-sm font-medium text-slate-200 hover:text-white hover:bg-white/10 transition whitespace-nowrap">
+                                Bladeren...
+                            </button>
+                        </div>
                         <label class="flex items-center gap-2 mt-2 text-sm text-slate-400">
                             <input type="checkbox" name="recursive" value="1" checked> ook submappen doorzoeken
                         </label>
+                        <p class="text-xs text-slate-500 mt-1">"Bladeren..." werkt alleen op de pc waar deze webapp zelf draait.</p>
                     </div>
                     <div id="video-mode-files" class="hidden">
-                        <textarea name="video_paths_text" rows="3" placeholder='C:\Videos\video1.mp4&#10;C:\Videos\video2.mp4'
-                                  class="w-full bg-white/5 rounded-lg px-3 py-2 text-sm placeholder-slate-500 border border-white/10 focus:outline-none focus:border-emerald-500"></textarea>
-                        <p class="text-xs text-slate-500 mt-1">Eén pad per regel.</p>
+                        <div class="flex gap-2">
+                            <textarea name="video_paths_text" id="video-paths-textarea" rows="3" placeholder='C:\Videos\video1.mp4&#10;C:\Videos\video2.mp4'
+                                      class="flex-1 bg-white/5 rounded-lg px-3 py-2 text-sm placeholder-slate-500 border border-white/10 focus:outline-none focus:border-emerald-500"></textarea>
+                            <button type="button" onclick="browseFiles()" id="browse-files-btn"
+                                    class="jump-card px-4 py-2 rounded-lg text-sm font-medium text-slate-200 hover:text-white hover:bg-white/10 transition whitespace-nowrap self-start">
+                                Bladeren...
+                            </button>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-1">Eén pad per regel, of gebruik "Bladeren..." (alleen op de pc waar deze webapp zelf draait).</p>
                     </div>
                                         <div id="video-mode-upload" class="hidden">
                         <input type="file" name="video_files" multiple accept=".mp4,.mov,.m4v"
@@ -91,14 +114,84 @@
     </div>
 
     <script>
-                function toggleVideoMode() {
+        function toggleVideoMode() {
             const mode = document.querySelector('input[name=video_mode]:checked').value;
             document.getElementById('video-mode-folder').classList.toggle('hidden', mode !== 'folder');
             document.getElementById('video-mode-files').classList.toggle('hidden', mode !== 'files');
             document.getElementById('video-mode-upload').classList.toggle('hidden', mode !== 'upload');
         }
 
-// -- /who/ click handling --------------------------------------
+        // -- Server-side Verkenner-dialogen (2026-09-15, TODO.md item 5) --
+        // Werken alleen als deze pagina open staat op dezelfde pc als
+        // waar de server draait (de dialoog opent op DIE machine).
+        function browseFolder() {
+            const btn = document.getElementById('browse-folder-btn');
+            btn.disabled = true;
+            fetch('/setup/browse_folder', {method: 'POST'})
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        alert('Kon de Verkenner-mapdialoog niet openen: ' + data.error);
+                    } else if (data.path) {
+                        document.getElementById('video-folder-input').value = data.path;
+                    }
+                    // leeg pad = geannuleerd door de gebruiker, niets doen
+                })
+                .catch(err => alert('Kon de Verkenner-mapdialoog niet openen: ' + err))
+                .finally(() => { btn.disabled = false; });
+        }
+
+        function browseFiles() {
+            const btn = document.getElementById('browse-files-btn');
+            btn.disabled = true;
+            fetch('/setup/browse_files', {method: 'POST'})
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        alert('Kon de Verkenner-bestandsdialoog niet openen: ' + data.error);
+                    } else if (data.paths && data.paths.length) {
+                        document.getElementById('video-paths-textarea').value = data.paths.join('\n');
+                    }
+                    // lege lijst = geannuleerd door de gebruiker, niets doen
+                })
+                .catch(err => alert('Kon de Verkenner-bestandsdialoog niet openen: ' + err))
+                .finally(() => { btn.disabled = false; });
+        }
+
+        // -- Terminal-/logpaneel automatisch laten meescrollen ----------
+        // (2026-09-15, TODO.md item 12)
+        // Elke seconde vervangt htmx (hx-trigger="every 1s") de hele
+        // #status-wrap-div, inclusief het .log-panel-element met de
+        // live-terminal-/logoutput, door een verse versie -- een browser
+        // zet de scrollpositie van zo'n NIEUW element altijd terug naar
+        // boven, dus zonder dit stond je bij elke refresh weer bovenaan
+        // de output i.p.v. bij de nieuwste regels onderaan. Oplossing:
+        // onthoud vlak vóór elke swap of je al dicht bij de onderkant
+        // zat -- zo ja, dan blijf je automatisch "meescrollen" naar de
+        // nieuwste regel; zat je hoger op om terug te lezen, dan komt
+        // de scrollpositie na de swap weer op (ongeveer) dezelfde
+        // absolute plek te staan, zodat lezen niet steeds onderbroken
+        // wordt door een sprong naar boven.
+        let logPanelWasNearBottom = true;
+        let logPanelScrollTop = 0;
+
+        document.body.addEventListener('htmx:beforeSwap', function (evt) {
+            const panel = document.querySelector('.log-panel');
+            if (panel) {
+                logPanelScrollTop = panel.scrollTop;
+                logPanelWasNearBottom =
+                    panel.scrollHeight - panel.scrollTop - panel.clientHeight < 40;
+            }
+        });
+
+        document.body.addEventListener('htmx:afterSwap', function (evt) {
+            const panel = document.querySelector('.log-panel');
+            if (panel) {
+                panel.scrollTop = logPanelWasNearBottom ? panel.scrollHeight : logPanelScrollTop;
+            }
+        });
+
+        // -- /who/ click handling --------------------------------------
 function swapWhoPanel(html) {
     const container = document.getElementById('who-panel');
     container.innerHTML = html;
@@ -127,19 +220,6 @@ function whoImageClick(evt, videoId) {
 function whoAction(path) {
     fetch(path, {method: 'POST'}).then(r => r.text()).then(swapWhoPanel);
 }
-
-        function toggleYoloOptions() {
-            const yolo = document.getElementById('pose-backend-select').value === 'yolo';
-            const box = document.getElementById('yolo-options');
-            if (box) box.classList.toggle('hidden', !yolo);
-        }
-
-        function toggleMediapipeOptions() {
-            const el = document.getElementById('pose-backend-select');
-            const mediapipe = el ? el.value === 'mediapipe' : true;
-            const box = document.getElementById('mediapipe-options');
-            if (box) box.classList.toggle('hidden', !mediapipe);
-        }
     </script>
 </body>
 </html>

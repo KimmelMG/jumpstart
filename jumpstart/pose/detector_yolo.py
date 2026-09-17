@@ -52,12 +52,28 @@ comparable, just the same anatomical points).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
 
-from jumpstart.pose.detector import PersonDetection
+
+@dataclass(frozen=True)
+class PersonDetection:
+    """One detected person's hip midpoint in one frame.
+
+    Attributes:
+        x: Horizontal pixel position of the hip midpoint.
+        y: Vertical pixel position of the hip midpoint.
+        visibility: Mean visibility score of the two hip landmarks
+            (0-1, higher is more confident); may be reported as 1.0
+            when the backend does not provide a confidence score.
+    """
+
+    x: float
+    y: float
+    visibility: float
 
 LEFT_HIP_KEYPOINT = 11
 RIGHT_HIP_KEYPOINT = 12

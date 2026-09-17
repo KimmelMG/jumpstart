@@ -5,22 +5,7 @@
     </p>
 
     <form hx-post="/analysis/start" hx-target="#status-wrap" hx-swap="outerHTML" class="space-y-4">
-        <div>
-            <label class="block text-sm font-medium text-slate-300 mb-1">Pose-model</label>
-            <select id="pose-backend-select" name="pose_backend" onchange="toggleYoloOptions(); toggleMediapipeOptions();"
-                    class="w-full bg-white/5 rounded-lg px-3 py-2 text-sm border border-white/10 focus:outline-none focus:border-emerald-500">
-                <option value="yolo" selected>YOLO-pose (aanbevolen -- gevalideerd op echte beelden, veel minder gemiste detecties dan MediaPipe)</option>
-                <option value="mediapipe">MediaPipe (fallback -- op dit project structureel minder betrouwbaar bij meerdere atleten in beeld)</option>
-            </select>
-        </div>
-        <div id="mediapipe-options" class="hidden">
-            <label class="block text-sm font-medium text-slate-300 mb-1">MediaPipe-variant</label>
-            <select name="mediapipe_variant" class="w-full bg-white/5 rounded-lg px-3 py-2 text-sm border border-white/10 focus:outline-none focus:border-emerald-500">
-                <option value="lite" selected>lite (standaard, snelst)</option>
-                <option value="full">full (nauwkeuriger volgens MediaPipe, trager -- op dit project geen gemeten verschil met lite)</option>
-            </select>
-            <p class="text-xs text-amber-400/80 mt-1">Bij de eerste analyse met "full" wordt dat modelbestand eenmalig gedownload -- internet nodig.</p>
-        </div>
+        <input type="hidden" name="pose_backend" value="yolo">
         <div id="yolo-options">
             <label class="block text-sm font-medium text-slate-300 mb-1">YOLO-model variant</label>
             <select name="yolo_model_name" class="w-full bg-white/5 rounded-lg px-3 py-2 text-sm border border-white/10 focus:outline-none focus:border-emerald-500">

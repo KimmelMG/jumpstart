@@ -9,7 +9,7 @@ if exist "%INSTALL_MARKER%" if exist "%VENVDIR%\Scripts\python.exe" goto :run
 
 echo.
 echo [Jumpstart] Geen complete virtuele omgeving gevonden - installatie wordt (opnieuw) gestart.
-echo [Jumpstart] Dit duurt de eerste keer een paar minuten ^(mediapipe/opencv/ultralytics zijn grote packages^).
+echo [Jumpstart] Dit duurt de eerste keer een paar minuten ^(opencv/ultralytics zijn grote packages^).
 echo [Jumpstart] De virtuele omgeving komt te staan in:
 echo [Jumpstart]   %VENVDIR%
 echo [Jumpstart] ^(buiten je OneDrive-map en buiten de map van de Microsoft Store-Python,
@@ -121,6 +121,8 @@ pause
 exit /b 1
 
 :run
+powershell -NoProfile -Command "$d=[Environment]::GetFolderPath('Desktop'); $p=Join-Path $d 'Jumpstart.lnk'; if (-not (Test-Path $p)) { $s=(New-Object -ComObject WScript.Shell).CreateShortcut($p); $s.TargetPath='%~dp0Jumpstart_starten.bat'; $s.WorkingDirectory='%~dp0'; $s.IconLocation='%~dp0jumpstart_icon.ico'; $s.Save() }" >nul 2>nul
+
 call :ensure_firewall_rule
 
 echo [Jumpstart] Server wordt gestart...

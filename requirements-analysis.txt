@@ -5,7 +5,6 @@
 numpy
 scipy
 pandas
-mediapipe
 opencv-python
 matplotlib
 openpyxl

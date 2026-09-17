@@ -115,7 +115,7 @@ import cv2
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from jumpstart.pose.detector import PersonDetection
+from jumpstart.pose.detector_yolo import PersonDetection
 from jumpstart.who.assignment import FrameAssignment
 
 # Standard gravity, m/s^2 -- NOT currently used directly (kept here in
@@ -230,22 +230,6 @@ class AthleteTrack:
             but lost the greedy match to another athlete
             (had_eligible_candidate == True, a matching-priority
             problem).
-        frame_skipped: Same length as frame_indices; frame-level (same
-            value for every athlete's track at a given frame index,
-            like decode_failed) -- True where the adaptive frame-skip
-            feature (added 2026-08-21, see _detect_all_frames'
-            adaptive_* arguments and _TriggerTracker; ported from the
-            frame-skip-experiment-2026-08-21 dated copy into this
-            real module 2026-09-03) deliberately did NOT run pose
-            detection on that frame, as opposed to running it and
-            genuinely finding nobody. Always all-False when
-            adaptive_skip_frames was not used for this run -- lets
-            was_interpolated be read the same way as before this
-            feature existed. A frame can be BOTH frame_skipped and
-            was_interpolated (skipped -> no detection recorded ->
-            interpolated), but decode_failed and frame_skipped are
-            mutually exclusive (a frame that failed to decode was
-            never a candidate for the skip/measure decision).
     """
 
     participant_id: str
@@ -261,12 +245,6 @@ class AthleteTrack:
     raw_detection_count: np.ndarray
     decode_failed: np.ndarray
     had_eligible_candidate: np.ndarray
-    frame_skipped: np.ndarray
-
-    @property
-    def timestamps_s(self) -> np.ndarray:
-        """Return frame_indices converted to seconds from video start."""
-        return self.frame_indices / self.fps
 
 
 @dataclass
@@ -351,7 +329,6 @@ class _MutableTrack:
                 raw_detection_count=np.array([], dtype=int),
                 decode_failed=np.array([], dtype=bool),
                 had_eligible_candidate=np.array([], dtype=bool),
-                frame_skipped=np.array([], dtype=bool),
             )
 
         dense_frames = np.arange(frames_sorted[0], frames_sorted[-1] + 1)
@@ -411,16 +388,6 @@ class _MutableTrack:
                 ]
             )
 
-        # Frame-level, same reasoning as raw_detection_count/
-        # decode_failed above -- added 2026-08-21 for the adaptive
-        # frame-skip feature.
-        if frame_skipped_by_frame is None:
-            dense_frame_skipped = np.zeros(dense_frames.shape, dtype=bool)
-        else:
-            dense_frame_skipped = np.array(
-                [bool(frame_skipped_by_frame[int(f)]) for f in dense_frames]
-            )
-
         return AthleteTrack(
             participant_id=self.participant_id,
             video_id=video_id,
@@ -435,7 +402,6 @@ class _MutableTrack:
             raw_detection_count=dense_raw_detection_count,
             decode_failed=dense_decode_failed,
             had_eligible_candidate=dense_had_eligible_candidate,
-            frame_skipped=dense_frame_skipped,
         )
 
 
@@ -1139,15 +1105,32 @@ def track_all_athletes(
         cache_is_usable = False
         if detections_cache_path is not None and detections_cache_path.exists():
             print(f"    Cache gevonden, detecties laden uit {detections_cache_path} ...")
-            with open(detections_cache_path, "rb") as cache_file:
-                # NOTE (2026-08-21, adaptive frame-skip feature): the
-                # cached tuple grew a third element
-                # (frame_skipped_by_frame) -- a cache file written by
-                # a pre-2026-09-03 copy of this module will NOT unpack
-                # here. Delete/rename old cache files if this happens
-                # (a version mismatch here raises, it doesn't silently
-                # corrupt anything).
-                all_detections, decode_failed_by_frame, frame_skipped_by_frame = pickle.load(cache_file)
+            # Vangnet (2026-09-17): een cache-bestand dat om welke
+            # reden dan ook niet meer in te laden is, telt gewoon als
+            # cache-miss -- detectie draait dan opnieuw en het bestand
+            # wordt daarna overschreven met het nieuwe formaat. Vangt
+            # twee bekende gevallen af die hiervoor de hele analyse
+            # lieten crashen:
+            #   - ModuleNotFoundError: caches van voor 2026-09-17
+            #     bevatten gepickelde PersonDetection-objecten met het
+            #     oude modulepad jumpstart.pose.detector (dat bestand
+            #     is weg sinds de MediaPipe-backend verwijderd is; de
+            #     dataclass staat nu in jumpstart/pose/detector_yolo.py).
+            #   - ValueError bij het uitpakken: de gecachete tuple
+            #     groeide 2026-08-21 naar drie elementen
+            #     (frame_skipped_by_frame), dus een cache van voor
+            #     2026-09-03 past niet in deze drie namen.
+            try:
+                with open(detections_cache_path, "rb") as cache_file:
+                    all_detections, decode_failed_by_frame, frame_skipped_by_frame = pickle.load(cache_file)
+            except Exception as cache_error:
+                print(
+                    f"    WAARSCHUWING: cache {detections_cache_path} kon "
+                    f"niet ingeladen worden ({type(cache_error).__name__}: "
+                    f"{cache_error}) -- cache wordt genegeerd, detectie "
+                    "draait opnieuw en de cache wordt daarna vervangen."
+                )
+                all_detections = None
             # Toegevoegd 2026-09-08 (vangnet): een cache-bestand dat
             # niet bij DEZE video hoort -- bv. door een elders
             # gefixte cache-naamgevingsbug (jumpstart_webapp/
@@ -1160,7 +1143,11 @@ def track_all_athletes(
             # framecounts toevallig dicht genoeg bij elkaar lagen. Een
             # geldige cache heeft precies één entry per frame van DEZE
             # video.
-            if len(all_detections) == total_frames:
+            if all_detections is None:
+                # Inladen is hierboven al mislukt en gemeld -- niet
+                # nog een tweede waarschuwing erachteraan.
+                pass
+            elif len(all_detections) == total_frames:
                 cache_is_usable = True
             else:
                 print(

@@ -29,9 +29,10 @@ ongeacht hoeveel mensen tegelijk de webapp gebruiken.
 from __future__ import annotations
 
 import shutil
+import subprocess
+import sys
 import time
 import uuid
-from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -46,13 +47,21 @@ from jumpstart.profiles.manager import create_participant_template
 from jumpstart.session import Session
 from jumpstart.who.assignment import (
     FrameAssignment,
-    pixel_height_for_athlete,
     pixels_per_meter_from_click,
 )
-from jumpstart.who.frame_picker import extract_reference_frame
+from jumpstart.who.frame_picker import extract_frame_near, extract_reference_frame, get_frame_count
 
 from jumpstart_webapp import pipeline
-from jumpstart_webapp.state import ANALYSIS_QUEUE, DOWNLOADS_DIR, JOB_MANAGER, Job, WhoClickState
+from jumpstart_webapp.state import (
+    ANALYSIS_QUEUE,
+    DEBUG_CSV_DIR,
+    DOWNLOADS_DIR,
+    JOB_MANAGER,
+    RESULTS_DIR,
+    Job,
+    WhoClickState,
+    new_run_id,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -133,6 +142,77 @@ def download_template() -> FileResponse:
     path = create_participant_template(DOWNLOADS_DIR / "participant_template.xlsx")
     return FileResponse(path, filename="participant_template.xlsx")
 
+_TK_DIALOG_TIMEOUT_S = 300
+
+
+@app.post("/setup/browse_folder")
+async def browse_folder():
+    """Open een native Verkenner-mapdialoog op de machine waar deze server draait.
+
+    Werkt alleen zinvol als browser en server op dezelfde pc draaien
+    (de dialoog opent lokaal op de servermachine, niet bij de client).
+    """
+    script = (
+        "import tkinter as tk\n"
+        "from tkinter import filedialog\n"
+        "root = tk.Tk()\n"
+        "root.withdraw()\n"
+        "root.attributes('-topmost', True)\n"
+        "path = filedialog.askdirectory()\n"
+        "print(path)\n"
+    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=_TK_DIALOG_TIMEOUT_S,
+        )
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+    if result.returncode != 0:
+        return JSONResponse(
+            {"error": result.stderr.strip() or "onbekende fout bij openen mapdialoog"},
+            status_code=500,
+        )
+
+    return JSONResponse({"path": result.stdout.strip()})
+
+
+@app.post("/setup/browse_files")
+async def browse_files():
+    """Open een native Verkenner-bestandsdialoog (meerdere videobestanden) op de servermachine."""
+    script = (
+        "import tkinter as tk\n"
+        "from tkinter import filedialog\n"
+        "root = tk.Tk()\n"
+        "root.withdraw()\n"
+        "root.attributes('-topmost', True)\n"
+        "paths = filedialog.askopenfilenames(\n"
+        "    filetypes=[('Video', '*.mp4 *.mov *.m4v *.avi *.mkv *.webm'), ('Alle bestanden', '*.*')]\n"
+        ")\n"
+        "for p in paths:\n"
+        "    print(p)\n"
+    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=_TK_DIALOG_TIMEOUT_S,
+        )
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+    if result.returncode != 0:
+        return JSONResponse(
+            {"error": result.stderr.strip() or "onbekende fout bij openen bestandsdialoog"},
+            status_code=500,
+        )
+
+    paths = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return JSONResponse({"paths": paths})
 
 # ---------------------------------------------------------------------------
 # Step 1: participants + videos
@@ -222,6 +302,7 @@ def _who_context(job: Job) -> dict:
 def _load_video_for_who(job: Job, video, is_redo: bool = False) -> None:
     """Build a fresh WhoClickState for the given video and make it current."""
     frame, frame_index = extract_reference_frame(video.path, fraction=0.5)
+    total_frames = get_frame_count(video.path)
     frame_path = job.frames_dir / f"{video.video_id}.jpg"
     import cv2
 
@@ -246,6 +327,8 @@ def _load_video_for_who(job: Job, video, is_redo: bool = False) -> None:
         pixels_per_meter=ppm,
         pixels_per_meter_source=ppm_source,
         is_redo=is_redo,
+        frame_index=frame_index,
+        total_frames=total_frames,
     )
 
 
@@ -390,6 +473,69 @@ def who_undo(request: Request, job: Job = Depends(get_current_job)) -> HTMLRespo
         who.message = f"Laatste toewijzing ({removed_id}) ongedaan gemaakt."
     return templates.TemplateResponse(request, "partials/who_panel.html", _who_context(job))
 
+@app.post("/who/frame/shift", response_class=HTMLResponse)
+def who_frame_shift(
+    request: Request, seconds: float, job: Job = Depends(get_current_job)
+) -> HTMLResponse:
+    """Shift the /who/ reference frame by +/- `seconds` within the same video.
+
+    Toegevoegd 2026-09-09: het referentieframe lag vast op 50% van de
+    videoduur (frame_picker.extract_reference_frame) en viel daardoor
+    soms midden in een sprong -- geen stabiele heuppositie om op te
+    klikken/kalibreren. Deze knop schuift het getoonde frame een paar
+    seconden op of terug binnen dezelfde video; de videovolgorde en de
+    doorgegeven px/m-kalibratiewaarde blijven ongemoeid (net als bij
+    een gewone videowissel via "Vorige video"). Klikstatus wordt
+    gereset: pixelposities van het vorige frame horen niet bij het
+    nieuwe plaatje.
+    """
+    who = job.who
+    if who is None:
+        return templates.TemplateResponse(request, "partials/who_panel.html", _who_context(job))
+
+    import cv2
+
+    try:
+        frame, new_index, total_frames = extract_frame_near(who.video.path, who.frame_index, seconds)
+    except (FileNotFoundError, ValueError):
+        # Toegevoegd 2026-09-09 (vervolg): nooit crashen (500) op een
+        # schuifpoging voorbij het begin/einde van de video -- dat gaf
+        # een onverwerkte fout die het hele /who/-paneel wiste met de
+        # ruwe foutpagina (swapWhoPanel zet de responstekst 1-op-1 als
+        # innerHTML, ongeacht statuscode). In plaats daarvan gewoon een
+        # duidelijke melding tonen en de rest van de /who/-status
+        # (klikken, kalibratie, huidige frame) volledig intact laten.
+        who.message = (
+            "Kan niet verder schuiven -- waarschijnlijk het begin of "
+            "einde van de video bereikt."
+        )
+        return templates.TemplateResponse(request, "partials/who_panel.html", _who_context(job))
+
+    cv2.imwrite(str(who.frame_path), frame)
+
+    who.frame_index = new_index
+    who.total_frames = total_frames
+    who.remaining = list(job.session.participants)
+    who.assigned_ids = []
+    who.hip_positions = []
+    who.head_positions = []
+    who.feet_positions = []
+    who.calibration_writes = []
+    who.step = "hip"
+    who.pending_participant_id = None
+    who.pending_hip = None
+    who.pending_head = None
+    who.pending_previous_ppm = None
+
+    at_start = new_index == 0
+    at_end = total_frames > 0 and new_index == total_frames - 1
+    boundary = ""
+    if at_start:
+        boundary = " (begin van de video bereikt)"
+    elif at_end:
+        boundary = " (einde van de video bereikt)"
+    who.message = f"Frame verschoven naar frame {new_index}/{total_frames - 1}{boundary}."
+    return templates.TemplateResponse(request, "partials/who_panel.html", _who_context(job))
 
 @app.post("/who/finish", response_class=HTMLResponse)
 def who_finish(request: Request, job: Job = Depends(get_current_job)) -> HTMLResponse:
@@ -397,7 +543,7 @@ def who_finish(request: Request, job: Job = Depends(get_current_job)) -> HTMLRes
     if who is not None:
         assignment = FrameAssignment(
             video_id=who.video.video_id,
-            frame_index=0,
+            frame_index=who.frame_index,
             frame_width_px=who.frame_width_px,
             frame_height_px=who.frame_height_px,
             participant_ids=who.assigned_ids,
@@ -463,7 +609,6 @@ def analysis_start(
     request: Request,
     pose_backend: str = Form("yolo"),
     yolo_model_name: str = Form("yolov8n-pose.pt"),
-    mediapipe_variant: str = Form("lite"),
     export_filename: str = Form("jump_parameters.xlsx"),
     debug_csv: Optional[str] = Form(None),
     frame_skip: Optional[str] = Form(None),
@@ -479,24 +624,35 @@ def analysis_start(
     job.export_path = None
     job.result_count = 0
     job.per_participant_counts = {}
+    job.results_summary = []
     job.error_message = None
 
-    # Datum/tijdstempel altijd in de bestandsnaam (2026-09-04, TODO.md
-    # item 12): zonder dit zouden twee sessies die allebei de
-    # standaardnaam "jump_parameters.xlsx" gebruiken (of dezelfde
-    # eigen naam intypen) elkaars resultaten alsnog overschrijven,
-    # ook al hebben ze nu allebei hun eigen downloads-map.
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    # UPDATE 2026-09-09 (TODO.md item 8): resultaat-Excel en debug-CSV's
+    # van deze run krijgen nu allebei dezelfde run_id
+    # ("<datum>_<tijd>_<apparaatnaam>", zie state.new_run_id) in hun
+    # mapnaam onder de gedeelde RESULTS_DIR resp. DEBUG_CSV_DIR, i.p.v.
+    # de vorige per-sessie downloads/debug_csv-mappen -- zo zie je in
+    # Verkenner meteen welke twee submappen bij dezelfde run horen en
+    # van wanneer/welk apparaat ze zijn. De run_id zit ook (net als
+    # voorheen de timestamp) in de bestandsnaam zelf, zodat dat nog
+    # klopt als het bestand los uit zijn map gehaald wordt.
+    run_id = new_run_id()
     export_path = Path(export_filename).expanduser()
     stem = export_path.stem or "jump_parameters"
     suffix = export_path.suffix or ".xlsx"
-    stamped_name = f"{stem}_{timestamp}{suffix}"
+    stamped_name = f"{stem}_{run_id}{suffix}"
     if export_path.is_absolute():
         export_path = export_path.parent / stamped_name
     else:
-        export_path = job.downloads_dir / stamped_name
+        run_results_dir = RESULTS_DIR / run_id
+        run_results_dir.mkdir(parents=True, exist_ok=True)
+        export_path = run_results_dir / stamped_name
 
-    debug_csv_dir = job.debug_csv_dir if debug_csv else None
+    debug_csv_dir: Optional[Path] = None
+    if debug_csv:
+        debug_csv_dir = DEBUG_CSV_DIR / run_id
+        debug_csv_dir.mkdir(parents=True, exist_ok=True)
+    job.debug_csv_run_dir = debug_csv_dir
 
     # Frame-skip (added 2026-09-03): checkbox in the UI maps to fixed,
     # user-confirmed values (3 frames overslaan, 4.5s dense na trigger)
@@ -512,7 +668,6 @@ def analysis_start(
         _pose_backend=pose_backend,
         _export_path=export_path,
         _yolo_model_name=yolo_model_name,
-        _mediapipe_variant=mediapipe_variant,
         _debug_csv_dir=debug_csv_dir,
         _adaptive_skip_frames=adaptive_skip_frames,
         _adaptive_dense_duration_s=adaptive_dense_duration_s,
@@ -523,7 +678,6 @@ def analysis_start(
             _pose_backend,
             _export_path,
             _yolo_model_name,
-            _mediapipe_variant,
             _debug_csv_dir,
             adaptive_skip_frames=_adaptive_skip_frames,
             adaptive_dense_duration_s=_adaptive_dense_duration_s,
@@ -549,3 +703,18 @@ def download_results(job: Job = Depends(get_current_job)):
     if job.export_path is None or not job.export_path.exists():
         return JSONResponse({"error": "Nog geen resultaten."}, status_code=404)
     return FileResponse(job.export_path, filename=job.export_path.name)
+
+
+@app.get("/download/debug_csv")
+def download_debug_csv(job: Job = Depends(get_current_job)):
+    """Toegevoegd 2026-09-09 (TODO.md item 8): zip de DEBUG_CSV_DIR/
+    <run_id>-map van de laatst gestarte run en serveer die, naast de
+    bestaande /download voor het resultaten-Excel."""
+    run_dir = job.debug_csv_run_dir
+    if run_dir is None or not run_dir.is_dir() or not any(run_dir.iterdir()):
+        return JSONResponse({"error": "Geen debug-CSV's beschikbaar voor deze run."}, status_code=404)
+    # base_name = str(run_dir) -> shutil.make_archive plakt zelf ".zip"
+    # erachter, dus het zip-bestand komt als "<run_id>.zip" naast de
+    # (niet-gezipte) run-map zelf te staan onder DEBUG_CSV_DIR.
+    archive_path = Path(shutil.make_archive(str(run_dir), "zip", root_dir=str(run_dir)))
+    return FileResponse(archive_path, filename=archive_path.name)

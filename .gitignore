@@ -45,4 +45,18 @@ test.txt
 Stand van zaken met code.docx
 Stappenplan_manual_script.docx
 
-.env
+.env 
+# Telefoon-/camera-exports en Windows-systeembestanden -- nooit committen
+2026-09-10_10-07-28_21-006-0922.zip
+2026-09-15_11-37-25_21-006-0922.zip
+desktop.ini
+test.task
+ 
+# Handmatige-analyse script, hoort niet in de webapp-repo
+jumpstart_manual/
+ 
+# Nog niet klaar om te delen
+frame_cutter.py
+Stappenplan_jumpstart_script.docx
+Terminal output.docx
+script tweaking guide voor betere accuracy.docx

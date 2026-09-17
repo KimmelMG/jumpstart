@@ -43,13 +43,11 @@ class VideoFile:
         path: Absolute path to the video file on disk.
         session_id: Identifier of the recording session this video
             belongs to (e.g. one training/warm-up).
-        registered_at: Timestamp of when the video was registered.
     """
 
     video_id: str
     path: Path
     session_id: str
-    registered_at: datetime = field(default_factory=datetime.now)
 
 
 def discover_videos_in_folder(
