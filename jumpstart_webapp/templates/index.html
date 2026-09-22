@@ -37,7 +37,7 @@
         <header class="mb-10 flex items-center justify-between">
             <div>
                 <h1 class="text-3xl font-bold tracking-tight text-white">Jumpstart</h1>
-                <p class="text-slate-400 mt-1">Sprongdetectie & RTP-parameters uit video</p>
+                <p class="text-slate-400 mt-1">Automatische markerless spronganalyse voor RTP-parameters voor meerdere deelnemers uit dezelfde video's</p>
             </div>
             <a href="/template" class="jump-card px-4 py-2 rounded-lg text-sm font-medium text-slate-200 hover:text-white hover:bg-white/10 transition">
                 Deelnemerstemplate downloaden
@@ -45,13 +45,7 @@
         </header>
 
         <!-- Stepper -->
-        <ol class="flex items-center gap-2 mb-10 text-sm text-slate-400">
-            <li class="flex items-center gap-2"><span class="step-dot w-6 h-6 rounded-full bg-emerald-500 text-slate-900 font-bold flex items-center justify-center">1</span> Deelnemers &amp; video's</li>
-            <li class="flex-1 h-px bg-slate-700 mx-2"></li>
-            <li class="flex items-center gap-2"><span class="step-dot w-6 h-6 rounded-full bg-slate-700 text-slate-300 font-bold flex items-center justify-center">2</span> Atleten toewijzen</li>
-            <li class="flex-1 h-px bg-slate-700 mx-2"></li>
-            <li class="flex items-center gap-2"><span class="step-dot w-6 h-6 rounded-full bg-slate-700 text-slate-300 font-bold flex items-center justify-center">3</span> Analyse & resultaten</li>
-        </ol>
+            {% include "partials/stepper.html" %}
 
         <!-- Step 1: setup -->
         <section class="jump-card rounded-2xl p-6 mb-8">
@@ -72,32 +66,32 @@
                     </div>
                     <div id="video-mode-folder">
                         <div class="flex gap-2">
-                            <input type="text" name="video_folder" id="video-folder-input" placeholder='C:\Videos\Session1'
-                                   class="flex-1 bg-white/5 rounded-lg px-3 py-2 text-sm placeholder-slate-500 border border-white/10 focus:outline-none focus:border-emerald-500" />
                             <button type="button" onclick="browseFolder()" id="browse-folder-btn"
-                                    class="jump-card px-4 py-2 rounded-lg text-sm font-medium text-slate-200 hover:text-white hover:bg-white/10 transition whitespace-nowrap">
+                                    class="bg-emerald-600 hover:bg-emerald-500 transition text-white font-medium px-4 py-2 rounded-lg text-sm whitespace-nowrap">
                                 Bladeren...
                             </button>
+                            <input type="text" name="video_folder" id="video-folder-input" placeholder='C:\Videos\Session1' required
+                                class="flex-1 bg-white/5 rounded-lg px-3 py-2 text-sm placeholder-slate-500 border border-white/10 focus:outline-none focus:border-emerald-500" />
                         </div>
                         <label class="flex items-center gap-2 mt-2 text-sm text-slate-400">
-                            <input type="checkbox" name="recursive" value="1" checked> ook submappen doorzoeken
+                            <input type="checkbox" name="recursive" value="1" checked> Ook submappen doorzoeken
                         </label>
                         <p class="text-xs text-slate-500 mt-1">"Bladeren..." werkt alleen op de pc waar deze webapp zelf draait.</p>
                     </div>
                     <div id="video-mode-files" class="hidden">
                         <div class="flex gap-2">
-                            <textarea name="video_paths_text" id="video-paths-textarea" rows="3" placeholder='C:\Videos\video1.mp4&#10;C:\Videos\video2.mp4'
-                                      class="flex-1 bg-white/5 rounded-lg px-3 py-2 text-sm placeholder-slate-500 border border-white/10 focus:outline-none focus:border-emerald-500"></textarea>
                             <button type="button" onclick="browseFiles()" id="browse-files-btn"
-                                    class="jump-card px-4 py-2 rounded-lg text-sm font-medium text-slate-200 hover:text-white hover:bg-white/10 transition whitespace-nowrap self-start">
+                                    class="bg-emerald-600 hover:bg-emerald-500 transition text-white font-medium px-4 py-2 rounded-lg text-sm whitespace-nowrap self-start">
                                 Bladeren...
                             </button>
+                            <textarea name="video_paths_text" id="video-paths-textarea" rows="3" placeholder='C:\Videos\video1.mp4&#10;C:\Videos\video2.mp4' 
+                                    class="flex-1 bg-white/5 rounded-lg px-3 py-2 text-sm placeholder-slate-500 border border-white/10 focus:outline-none focus:border-emerald-500"></textarea>
                         </div>
                         <p class="text-xs text-slate-500 mt-1">Eén pad per regel, of gebruik "Bladeren..." (alleen op de pc waar deze webapp zelf draait).</p>
                     </div>
                                         <div id="video-mode-upload" class="hidden">
-                        <input type="file" name="video_files" multiple accept=".mp4,.mov,.m4v"
-                               class="block w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-600 file:text-white file:font-medium hover:file:bg-emerald-500 bg-white/5 rounded-lg" />
+                        <input type="file" name="video_files" multiple accept=".mp4,.mov,.m4v" 
+                               class="block w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-600 file:text-white file:font-medium hover:file:bg-emerald-500 bg-white/5 rounded-lg" /> 
                         <p class="text-xs text-slate-500 mt-1">Handig vanaf een telefoon/tablet -- grote bestanden kunnen even duren over wifi/mobiel internet.</p>
                     </div>
                 </div>
@@ -108,9 +102,9 @@
             </form>
         </section>
 
-        <div id="videos-panel"></div>
-        <div id="who-panel"></div>
-        <div id="analysis-panel"></div>
+        <div id="videos-panel" hx-get="/resume/videos" hx-trigger="load" hx-swap="innerHTML"></div>
+        <div id="who-panel" hx-get="/resume/who" hx-trigger="load" hx-swap="innerHTML"></div>
+        <div id="analysis-panel" hx-get="/resume/analysis" hx-trigger="load" hx-swap="innerHTML"></div>
     </div>
 
     <script>
@@ -119,6 +113,10 @@
             document.getElementById('video-mode-folder').classList.toggle('hidden', mode !== 'folder');
             document.getElementById('video-mode-files').classList.toggle('hidden', mode !== 'files');
             document.getElementById('video-mode-upload').classList.toggle('hidden', mode !== 'upload');
+
+            document.getElementById('video-folder-input').required = (mode === 'folder');
+            document.getElementById('video-paths-textarea').required = (mode === 'files');
+            document.querySelector('input[name=video_files]').required = (mode === 'upload');
         }
 
         // -- Server-side Verkenner-dialogen (2026-09-15, TODO.md item 5) --
@@ -196,6 +194,18 @@ function swapWhoPanel(html) {
     const container = document.getElementById('who-panel');
     container.innerHTML = html;
     htmx.process(container); // activate hx-* attributes in the injected HTML (e.g. the analysis form)
+
+    // De backend stuurt de bovenste stepper mee als hx-swap-oob, maar
+    // whoAction() gaat buiten htmx's eigen ajax-mechanisme om (kale
+    // fetch + innerHTML), dus die oob-swap wordt nooit automatisch
+    // verwerkt -- de meegestuurde stepper belandt anders als losse
+    // kopie binnen #who-panel i.p.v. de echte stepper bovenaan te
+    // vervangen. Doe de verplaatsing hier zelf:
+    const oobStepper = container.querySelector('#stepper');
+    const realStepper = document.querySelector('#stepper');
+    if (oobStepper && realStepper && realStepper !== oobStepper) {
+        realStepper.replaceWith(oobStepper);
+    }
 }
 
 function whoImageClick(evt, videoId) {

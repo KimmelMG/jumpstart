@@ -143,12 +143,11 @@ def _firewall_rule_exists() -> bool | None:
 
 def _print_firewall_warning() -> None:
     print("  LET OP: de firewallregel van Jumpstart ontbreekt op deze computer.")
-    print("  Dat is verreweg de meest voorkomende reden dat de pagina op een")
-    print("  telefoon eindeloos blijft laden: Windows laat de verbinding dan")
-    print("  stilletjes vallen, zonder foutmelding.")
-    print("  Oplossing: sluit dit venster, start Jumpstart_starten.bat opnieuw")
-    print("  en kies JA bij het venster dat om beheerdersrechten vraagt. Of voer")
-    print("  dit eenmalig uit in PowerShell als administrator:")
+    print("  Zonder dit is het niet mogelijk om een verbinding met een telefoon")
+    print("  te maken. Wilt u dit oplossen? Sluit dit venster, start")
+    print("  Jumpstart_starten.bat opnieuw en kies JA bij het venster dat om")
+    print("  beheerdersrechten vraagt. Of voer dit eenmalig uit in PowerShell")
+    print("  als administrator:")
     print(f"    {FIREWALL_COMMAND}")
 
 
@@ -209,15 +208,11 @@ def _print_access_info() -> None:
         return
 
     # --- Case 3: wired only -- phone access often does not work ---------
-    print("  LET OP: deze computer zit niet op wifi maar op een vaste (bekabelde)")
-    print("  verbinding. Een telefoon kan een bekabelde computer vaak niet")
-    print("  bereiken -- zeker niet op bedrijfs- of instellingsnetwerken, waar")
-    print("  bekabeld en draadloos bewust gescheiden zijn. Reken er dus niet op:")
-    print("  gebruik de interface op deze computer zelf.")
-    print()
-    print("  Op een eenvoudig thuisnetwerk werkt het meestal wél. Wil je het")
-    print(f"  proberen: het IP-adres van de telefoon moet dan ook met {subnet}.")
-    print("  beginnen (instellingen -> wifi -> het netwerk). Zo ja, scan deze:")
+    print("  LET OP: Deze computer zit niet op wifi, maar een vaste verbinding.")
+    print("  Een telefoon kan een vaste verbinding (vaak) niet bereiken. Op een")
+    print("  thuisnetwerk kan het soms wel. Wilt u het proberen? Het IP-adres")
+    print(f"  van de telefoon moet dan ook met {subnet}. beginnen (instellingen ->")
+    print("  wifi -> het netwerk). Indien het geval, scan deze:")
     print()
     _print_qr(lan_url)
     print(LINE)

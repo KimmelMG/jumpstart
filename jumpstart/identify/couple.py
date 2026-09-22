@@ -15,7 +15,7 @@ frame" description in the workflow doc.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 from jumpstart.tracking.tracker import AthleteTrack, track_all_athletes
 from jumpstart.who.assignment import FrameAssignment
@@ -34,6 +34,7 @@ def identify_athletes_in_video(
     adaptive_dense_duration_s: float = 2.5,
     adaptive_trigger_speed_m_s: float = 2.0,
     adaptive_trigger_radius_m: float = 1.5,
+    progress_callback: Optional[Callable[[str, float, float, Optional[float]], None]] = None,
 ) -> Dict[str, AthleteTrack]:
     """Couple profiles to tracked hip positions for one video.
 
@@ -102,4 +103,5 @@ def identify_athletes_in_video(
         adaptive_dense_duration_s=adaptive_dense_duration_s,
         adaptive_trigger_speed_m_s=adaptive_trigger_speed_m_s,
         adaptive_trigger_radius_m=adaptive_trigger_radius_m,
+        progress_callback=progress_callback,
     )

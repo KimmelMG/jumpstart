@@ -109,7 +109,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 import cv2
 import numpy as np
@@ -527,14 +527,35 @@ class _ProgressReporter:
     docstring for why frame-count-based reporting isn't enough here).
     Always prints on the very first frame so there's instant
     confirmation the pass actually started.
+
+    UPDATE 2026-09-16 (webapp live voortgangsindicator): optionele
+    on_update-callback, aangeroepen op EXACT hetzelfde throttle-moment
+    als de bestaande print (dus ook hoogstens elke interval_s
+    seconden) met een dict {frames_done, total_steps, percent,
+    elapsed_s, eta_s, label} -- zodat een aanroeper (jumpstart_webapp/
+    pipeline.py) dit percentage ook buiten dit stdout-printen om kan
+    opvangen, bv. om te laten zien in de webapp. None (default) laat
+    het bestaande gedrag (alleen printen) volledig ongewijzigd.
     """
 
-    def __init__(self, total_steps: int, label: str, interval_s: float = 5.0) -> None:
+    def __init__(
+        self,
+        total_steps: int,
+        label: str,
+        interval_s: float = 5.0,
+        on_update: Optional[Callable[[str, float, float, Optional[float]], None]] = None,
+    ) -> None:
         self.total_steps = total_steps
         self.label = label
         self.interval_s = interval_s
         self.start_time = time.time()
         self.last_print_time = self.start_time
+        # Toegevoegd 2026-09-22 (opschonen-to-do E): optionele callback,
+        # zelfde ingebouwde rate-limit als de print hieronder (dus geen
+        # aparte throttle nodig) -- laat de webapp dit percentage in de
+        # UI tonen i.p.v. alleen naar de server-cmd te printen. None
+        # (CLI-gebruik) is exact het oude gedrag.
+        self.on_update = on_update
 
     def update(self, step: int) -> None:
         """Call once per processed frame with its 0-based step index."""
@@ -552,14 +573,22 @@ class _ProgressReporter:
         percent = 100 * frames_done / self.total_steps
         rate_fps = frames_done / elapsed_s if elapsed_s > 0 else 0.0
         remaining = self.total_steps - frames_done
-        eta_text = (
-            f"{remaining / rate_fps:.0f}s" if rate_fps > 0 else "unknown"
-        )
+        eta_s = remaining / rate_fps if rate_fps > 0 else None
+        eta_text = f"{eta_s:.0f}s" if eta_s is not None else "unknown"
         print(
             f"    {self.label}: {frames_done}/{self.total_steps} frames "
             f"({percent:.0f}%, {elapsed_s:.0f}s elapsed, "
             f"~{rate_fps:.2f} frames/s, ETA {eta_text})"
         )
+        if self.on_update is not None:
+            self.on_update({
+                "label": self.label,
+                "frames_done": frames_done,
+                "total_steps": self.total_steps,
+                "percent": percent,
+                "elapsed_s": elapsed_s,
+                "eta_s": eta_s,
+            })
 
 
 class _TriggerTracker:
@@ -705,6 +734,7 @@ def _detect_all_frames(
     adaptive_trigger_speed_m_s: float = 2.0,
     seed_positions_px: Optional[List[Tuple[float, float]]] = None,
     adaptive_trigger_radius_m: float = 1.5,
+    progress_callback: Optional[Callable[[str, float, float, Optional[float]], None]] = None,
 ) -> Tuple[List[List[PersonDetection]], List[bool], List[bool]]:
     """Run pose detection over every frame via one sequential pass.
 
@@ -857,7 +887,7 @@ def _detect_all_frames(
     all_detections: List[List[PersonDetection]] = [[] for _ in range(total_frames)]
     decode_failed_by_frame: List[bool] = [False] * total_frames
     frame_skipped_by_frame: List[bool] = [False] * total_frames
-    reporter = _ProgressReporter(total_frames, "Pose detection")
+    reporter = _ProgressReporter(total_frames, "Pose detection", on_update=progress_callback)
 
     use_adaptive_skip = adaptive_skip_frames is not None and adaptive_skip_frames > 0
     if use_adaptive_skip and pixels_per_meter is None:
@@ -970,6 +1000,7 @@ def track_all_athletes(
     adaptive_dense_duration_s: float = 2.5,
     adaptive_trigger_speed_m_s: float = 2.0,
     adaptive_trigger_radius_m: float = 1.5,
+    progress_callback: Optional[Callable[[str, float, float, Optional[float]], None]] = None,
 ) -> Dict[str, AthleteTrack]:
     """Track every assigned athlete's hip midpoint across a video.
 
@@ -1173,13 +1204,9 @@ def track_all_athletes(
                 adaptive_rewind_samples=adaptive_rewind_samples,
                 adaptive_dense_duration_s=adaptive_dense_duration_s,
                 adaptive_trigger_speed_m_s=adaptive_trigger_speed_m_s,
-                # Every assigned athlete's /who/ seed click position --
-                # added 2026-08-24 so the trigger only looks at
-                # detections near an actual tracked athlete, not every
-                # person in frame. See _detect_all_frames's
-                # seed_positions_px docstring note.
                 seed_positions_px=list(assignment.click_positions),
                 adaptive_trigger_radius_m=adaptive_trigger_radius_m,
+                progress_callback=progress_callback,
             )
             if detections_cache_path is not None:
                 detections_cache_path.parent.mkdir(parents=True, exist_ok=True)

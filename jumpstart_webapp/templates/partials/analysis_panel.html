@@ -9,35 +9,35 @@
         <div id="yolo-options">
             <label class="block text-sm font-medium text-slate-300 mb-1">YOLO-model variant</label>
             <select name="yolo_model_name" class="w-full bg-white/5 rounded-lg px-3 py-2 text-sm border border-white/10 focus:outline-none focus:border-emerald-500">
-                <option value="yolov8n-pose.pt" selected>yolov8n-pose (nano, snelst)</option>
+                <option value="yolov8n-pose.pt" selected>yolov8n-pose (aangeraden, snelst en accuraat getest)</option>
                 <option value="yolov8s-pose.pt">yolov8s-pose</option>
                 <option value="yolov8m-pose.pt">yolov8m-pose</option>
                 <option value="yolov8l-pose.pt">yolov8l-pose</option>
-                <option value="yolov8x-pose.pt">yolov8x-pose (extra-large, nauwkeurigst)</option>
+                <option value="yolov8x-pose.pt">yolov8x-pose (Nauwkeurigst)</option>
             </select>
-            <p class="text-xs text-amber-400/80 mt-1">Vereist eenmalig <code>pip install ultralytics</code> + internet bij de allereerste run.</p>
         </div>
         <div>
             <label class="block text-sm font-medium text-slate-300 mb-1">Bestandsnaam resultaten</label>
             <input type="text" name="export_filename" value="jump_parameters.xlsx"
-                   class="w-full bg-white/5 rounded-lg px-3 py-2 text-sm border border-white/10 focus:outline-none focus:border-emerald-500" />
+                class="w-full bg-white/5 rounded-lg px-3 py-2 text-sm border border-white/10 focus:outline-none focus:border-emerald-500" />
+            <p class="text-xs text-slate-500 mt-1">De datum en tijd van de analyse worden hier automatisch achteraan geplakt.</p>
         </div>
         <label class="flex items-center gap-2 text-sm text-slate-300">
             <input type="checkbox" name="debug_csv" value="1">
-            Debug-CSV's per atleet/video wegschrijven (per-frame signaal -- voor het onderzoeken van sprongdetectie)
+            Debug-CSV's per atleet en video schrijven (voor onderzoek naar sprongdetectie. Niet essentieel)
         </label>
         <label class="flex items-center gap-2 text-sm text-slate-300">
             <input type="checkbox" name="frame_skip" value="1">
-            Frame-skip: analyse versnellen (3 frames overslaan, 4,5s dense meten na een snelheidstrigger -- vereist pixels-per-meter-kalibratie voor de videoresolutie, anders wordt alsnog elk frame gemeten)
+            Frame-skipmethode toepassen: 3 frames overslaan tussen sprongen, 4,5sec niet overslaan rondom sprongen. Verhoogt analysesnelheid
         </label>
         <label class="flex items-center gap-2 text-sm text-slate-300">
             <input type="checkbox" name="use_cache" value="1">
-            Detectie-cache gebruiken (slaat ruwe /pose/-detecties per video op na de eerste run, en hergebruikt ze bij een latere run met dezelfde video + hetzelfde pose-model + dezelfde frame-skip-instelling -- handig om alleen /events/+/jumps/ opnieuw te draaien zonder /pose/ te herhalen)
+           Detectie-cache gebruiken: Opslaan of inladen van pose-detectie data van een eerdere analyse voor video's in pipeline. Scheelt een hoop run-time wanneer heranalyse nodig is.
         </label>
         <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 transition text-white font-medium px-5 py-2.5 rounded-lg">
             Start analyse
         </button>
     </form>
 
-    <div id="status-wrap" class="mt-6"></div>
+    <div id="status-wrap" class="mt-6" hx-get="/status" hx-trigger="load" hx-swap="outerHTML"></div>
 </section>

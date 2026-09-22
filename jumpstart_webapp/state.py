@@ -216,12 +216,33 @@ class Job:
         # pipeline.build_results_summary, zelfde moment als export_path/
         # result_count hierboven.
         self.results_summary: List[Dict] = []
+        # Toegevoegd 2026-09-16 (live voortgangsindicator per video,
+        # TODO.md): het percentage van de HUIDIGE video's /pose/-stap,
+        # bijgewerkt door pipeline.run_analysis's progress_callback
+        # (zie jumpstart/tracking/tracker.py's _ProgressReporter), max.
+        # 1x per ~5s. None zolang er geen video in de /pose/-stap zit.
+        # Dict-vorm: {"video_id", "label", "percent", "elapsed_s", "eta_s"}.
+        self.current_video_progress: Optional[Dict] = None
         self.error_message: Optional[str] = None
 
     def log(self, text: str) -> None:
         with self.lock:
             for line in str(text).splitlines() or [""]:
                 self.log_lines.append(line)
+
+    def set_video_progress(self, video_id: str, info: Dict) -> None:
+        """Thread-safe setter voor current_video_progress.
+
+        `info` is de dict die tracker._ProgressReporter's on_update-
+        callback doorgeeft ({"label", "frames_done", "total_steps",
+        "percent", "elapsed_s", "eta_s"}) -- video_id zit daar zelf
+        niet in (de reporter kent geen video's, alleen frames), dus
+        die wordt hier toegevoegd. Aangeroepen vanuit de achtergrond-
+        analysethread, niet de request-thread van /status -- vandaar
+        de lock, zelfde patroon als log().
+        """
+        with self.lock:
+            self.current_video_progress = {"video_id": video_id, **info}
 
 
 class JobManager:

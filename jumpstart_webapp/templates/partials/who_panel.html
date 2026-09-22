@@ -9,13 +9,13 @@
     <p class="text-emerald-400 text-sm mb-3">{{ who.message }}</p>
     {% endif %}
 
-    <p class="text-slate-300 mb-3">
+    <p class="{% if who.step == "hip" %}text-slate-300{% else %}text-emerald-400{% endif %} mb-3">
         {% if who.step == "hip" %}
-            Klik op het <strong>midden van de heupen</strong> van de volgende atleet, van links naar rechts.
+            Klik op het <strong>midden van de heupen in stabiele standfase</strong> van de atleten, van links naar rechts.
         {% elif who.step == "head" %}
-            Klik op de <strong>kruin</strong> (bovenkant hoofd) van {{ who.pending_participant_id }} -- kalibratie voor deze video.
+            Klik nu op de <strong>kruin</strong> van {{ who.pending_participant_id }} - Kalibratie voor deze video.
         {% else %}
-            Klik op de <strong>voeten</strong> (onderkant) van {{ who.pending_participant_id }}.
+            Klik nu op de <strong>voeten</strong> van {{ who.pending_participant_id }} - Kalibratie voor deze video.
         {% endif %}
     </p>
 
@@ -40,7 +40,7 @@
     <div class="flex items-center gap-3 mb-4">
         <button onclick="whoAction('/who/frame/shift?seconds=-1')" class="bg-white/10 hover:bg-white/20 transition text-slate-200 font-medium px-3 py-1.5 rounded-lg text-sm">&larr; 1s eerder</button>
         <button onclick="whoAction('/who/frame/shift?seconds=1')" class="bg-white/10 hover:bg-white/20 transition text-slate-200 font-medium px-3 py-1.5 rounded-lg text-sm">1s later &rarr;</button>
-        <span class="text-xs text-slate-500">frame {{ who.frame_index }}{% if who.total_frames %} / {{ who.total_frames - 1 }}{% endif %} -- schuif als dit frame geen stabiele heuppositie laat zien (bv. midden in een sprong)</span>
+        <span class="text-xs text-slate-500">frame {{ who.frame_index }}{% if who.total_frames %} / {{ who.total_frames - 1 }}{% endif %} - Verschuif als dit frame geen stabiele heuppositie laat zien (bv. tijdens een sprong)</span>
     </div>
 
     {% if who.step == "hip" %}
@@ -61,13 +61,13 @@
                 {% if who.pixels_per_meter_source %}(gekalibreerd bij {{ who.pixels_per_meter_source }}){% endif %}
             </p>
             <label class="flex items-center gap-2 mt-2 text-sm text-slate-400">
-                <input type="checkbox" id="force-recal"> Herkalibreer{% if who.is_redo %} alleen deze video{% else %} vanaf deze video{% endif %} -- volgende klik vraagt weer kop+voeten
+                <input type="checkbox" id="force-recal"> Herkalibreer{% if who.is_redo %} alleen deze video{% else %} vanaf deze video{% endif %} - volgende toewijzing vraagt weer kalibratiestappen
             </label>
             <p class="text-xs text-slate-500 mt-1">
                 Herkalibreer als de camera is verplaatst of gezoomd sinds de vorige kalibratie.
             </p>
             {% else %}
-            <p class="text-xs text-slate-500 mt-2">Nog geen kalibratie voor {{ who.frame_width_px }}x{{ who.frame_height_px }} -- na de heup-klik volgen kruin + voeten.</p>
+            <p class="text-xs text-slate-500 mt-2">Nog geen kalibratie voor {resolutie} - Na toewijzing van de eerstvolgende atleet volgt kalibratie.</p>
             {% endif %}
         </div>
     {% endif %}
@@ -77,11 +77,14 @@
         <button onclick="whoAction('/who/previous')" class="bg-white/10 hover:bg-white/20 transition text-slate-200 font-medium px-4 py-2 rounded-lg text-sm">&larr; Vorige video</button>
         {% endif %}
         <button onclick="whoAction('/who/undo')" class="bg-white/10 hover:bg-white/20 transition text-slate-200 font-medium px-4 py-2 rounded-lg text-sm">Ongedaan maken</button>
-        <button onclick="whoAction('/who/finish')" {% if who.step != 'hip' %}disabled{% endif %}
-                class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed transition text-white font-medium px-4 py-2 rounded-lg text-sm">Klaar met deze video &rarr;</button>
+        <button onclick="whoAction('/who/finish')" {% if who.step != 'hip' or not who.assigned_ids %}disabled{% endif %}
+                class="{% if who.assigned_ids %}bg-emerald-600 hover:bg-emerald-500{% else %}bg-slate-700{% endif %} disabled:cursor-not-allowed transition text-white font-medium px-4 py-2 rounded-lg text-sm">Klaar met deze video &rarr;</button>
         <button onclick="whoAction('/who/skip')" class="text-slate-400 hover:text-slate-200 transition text-sm px-2">Video overslaan</button>
     </div>
+
 </section>
 {% elif job.session and job.session.who_assignments %}
 {% include "partials/analysis_panel.html" %}
 {% endif %}
+
+{% set oob = True %}{% include "partials/stepper.html" %}

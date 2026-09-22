@@ -68,8 +68,29 @@ BASE_DIR = Path(__file__).resolve().parent
 app = FastAPI(title="Jumpstart")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 templates.env.filters["id"] = id  # cache-busting for the reference-frame <img> tag
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
+def _current_step(job: Job) -> int:
+    """Welke stap (1/2/3) van de workflow-stepper actief moet staan.
+
+    Puur afgeleid van bestaande Job-state, geen los veld op Job zelf --
+    anders moet dat op meerdere plekken tegelijk bijgewerkt worden en
+    kan het makkelijk ontsync raken met de werkelijke voortgang.
+    Geregistreerd als Jinja-global (zie hieronder) zodat elke template
+    die de stepper (opnieuw) tekent -- index.html zelf, en de partials
+    die 'm via een out-of-band swap verversen -- 'm kan aanroepen met
+    current_step(job).
+    """
+    if job.session is None:
+        return 1
+    if job.who is not None:
+        return 2
+    if job.session.who_assignments:
+        return 3
+    return 2
+
+templates.env.globals["current_step"] = _current_step
+
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 # ---------------------------------------------------------------------------
 # Sessie-isolatie (2026-09-04): elke browser krijgt via een cookie een
@@ -127,6 +148,25 @@ def get_current_job(request: Request) -> Job:
     """
     return JOB_MANAGER.get_or_create(request.state.session_id)
 
+@app.get("/resume/videos", response_class=HTMLResponse)
+def resume_videos(request: Request, job: Job = Depends(get_current_job)) -> HTMLResponse:
+    if job.session is None and job.setup_error is None:
+        return HTMLResponse("")
+    return templates.TemplateResponse(request, "partials/videos_panel.html", {"job": job})
+
+
+@app.get("/resume/who", response_class=HTMLResponse)
+def resume_who(request: Request, job: Job = Depends(get_current_job)) -> HTMLResponse:
+    if job.who is None:
+        return HTMLResponse("")
+    return templates.TemplateResponse(request, "partials/who_panel.html", _who_context(job))
+
+
+@app.get("/resume/analysis", response_class=HTMLResponse)
+def resume_analysis(request: Request, job: Job = Depends(get_current_job)) -> HTMLResponse:
+    if job.session is None or not job.session.who_assignments or job.who is not None:
+        return HTMLResponse("")
+    return templates.TemplateResponse(request, "partials/analysis_panel.html", {"job": job})
 
 # ---------------------------------------------------------------------------
 # Page shell
@@ -134,7 +174,7 @@ def get_current_job(request: Request) -> Job:
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request, job: Job = Depends(get_current_job)) -> HTMLResponse:
-    return templates.TemplateResponse(request, "index.html", {})
+    return templates.TemplateResponse(request, "index.html", {"job": job})
 
 
 @app.get("/template")
@@ -391,11 +431,9 @@ async def who_click(request: Request, job: Job = Depends(get_current_job)) -> HT
             who.pending_hip = (x, y)
             who.pending_previous_ppm = who.pixels_per_meter
             who.step = "head"
-            who.message = f"Klik nu op de KRUIN (bovenkant hoofd) van {chosen.participant_id}."
     elif who.step == "head":
         who.pending_head = (x, y)
         who.step = "feet"
-        who.message = f"Klik nu op de VOETEN van {who.pending_participant_id}."
     else:  # feet
         participant = next(
             p for p in job.session.participants if p.participant_id == who.pending_participant_id
@@ -626,6 +664,7 @@ def analysis_start(
     job.per_participant_counts = {}
     job.results_summary = []
     job.error_message = None
+    job.current_video_progress = None
 
     # UPDATE 2026-09-09 (TODO.md item 8): resultaat-Excel en debug-CSV's
     # van deze run krijgen nu allebei dezelfde run_id

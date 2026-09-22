@@ -38,6 +38,22 @@ command. The only intentional differences:
     (with a printed warning, not shown in the web UI's log panel
     since it goes to the server's own stdout like the rest of
     /tracking/'s progress output) if no calibration exists yet.
+  - Detections-cache (added 2026-09-04) IS exposed -- see
+    analysis_start's use_cache checkbox in app.py, which maps to
+    run_analysis's use_cache below. When on, /pose/+/tracking/'s raw
+    per-frame detections for a video are pickled to
+    jumpstart_webapp/_detections_cache/ (see state.py's
+    DETECTIONS_CACHE_DIR) after the first run, and reused (skipping
+    /pose/ entirely) on a later run of the SAME video with the SAME
+    pose-backend/model + frame-skip setting -- the cache filename
+    encodes those so a changed setting just misses the cache and
+    detects fresh rather than silently reusing incompatible
+    detections. Mainly useful for re-running /events/+/jumps/+/calc/
+    (e.g. after a detector.py tuning change) without repeating the
+    slow /pose/ step. The underlying mechanism
+    (detections_cache_path) already existed in
+    jumpstart/tracking/tracker.py since 2026-08-14 but was never
+    wired up to anything until now.
 """
 
 from __future__ import annotations
@@ -144,17 +160,16 @@ def _detections_cache_path_for(
 def build_results_summary(all_parameters: List) -> List[Dict]:
     """Group JumpParameters per video, dan per atleet, voor het live
     resultatenpaneel in de webapp (TODO.md, "Resultatenpaneel
-    uitbreiden", toegevoegd 2026-09-15).
+    uitbreiden", toegevoegd 2026-09-15; herzien 2026-09-22, opschonen-
+    to-do F: niet meer per sprong met een aparte gemiddelde-rij, maar
+    altijd één rij per atleet per video).
 
-    Per atleet binnen een video: elke losse sprong (vluchttijd,
-    spronghoogte, time-to-takeoff, RSImod), plus -- alleen als er meer
-    dan 1 sprong is -- een gemiddelde +/- SD-rij erover. Zo is zowel de
-    per-sprong data (belangrijk bij clips, waar 1 sprong per video vaak
-    normaal is) als het per-persoon-per-video-gemiddelde (belangrijk bij
-    lange video's met meerdere sprongen per atleet) in één tabel
-    zichtbaar, zonder de Excel te hoeven downloaden. `rsi_modified` kan
-    NaN zijn (bij time_to_takeoff_s <= 0) -- die sprong telt dan niet
-    mee in het RSImod-gemiddelde.
+    Per atleet binnen een video: aantal sprongen, plus vluchttijd,
+    spronghoogte, time-to-takeoff en RSImod elk als gemiddelde +/- SD
+    over die sprongen (bij precies 1 sprong is de SD 0 en wordt hij in
+    de template niet getoond -- de "gemiddelde" is dan gewoon de ene
+    waarde). `rsi_modified` kan NaN zijn (bij time_to_takeoff_s <= 0)
+    -- die sprong telt dan niet mee in het RSImod-gemiddelde.
 
     Returns a list of dicts, one per video, each with a "participants"
     list -- rechtstreeks bruikbaar in templates/partials/status.html.
@@ -170,39 +185,26 @@ def build_results_summary(all_parameters: List) -> List[Dict]:
             jumps = sorted(
                 by_video[video_name][participant_id], key=lambda p: p.jump_number
             )
-            rows = [
-                {
-                    "jump_number": p.jump_number,
-                    "flight_time_s": p.flight_time_s,
-                    "jump_height_cm": p.jump_height_m * 100,
-                    "time_to_takeoff_s": p.time_to_takeoff_s,
-                    "rsi_modified": p.rsi_modified,
-                    "flagged": p.outside_physiological_bounds,
-                }
-                for p in jumps
-            ]
-            aggregate = None
-            if len(jumps) > 1:
-                flight_times = [p.flight_time_s for p in jumps]
-                heights_cm = [p.jump_height_m * 100 for p in jumps]
-                ttts = [p.time_to_takeoff_s for p in jumps]
-                rsis = [p.rsi_modified for p in jumps if p.rsi_modified == p.rsi_modified]
-                aggregate = {
-                    "n": len(jumps),
-                    "flight_time_mean": mean(flight_times),
-                    "flight_time_sd": pstdev(flight_times),
-                    "jump_height_mean": mean(heights_cm),
-                    "jump_height_sd": pstdev(heights_cm),
-                    "ttt_mean": mean(ttts),
-                    "ttt_sd": pstdev(ttts),
-                    "rsi_mean": mean(rsis) if rsis else float("nan"),
-                    "rsi_sd": pstdev(rsis) if len(rsis) > 1 else 0.0,
-                }
+            flight_times = [p.flight_time_s for p in jumps]
+            heights_cm = [p.jump_height_m * 100 for p in jumps]
+            ttts = [p.time_to_takeoff_s for p in jumps]
+            rsis = [p.rsi_modified for p in jumps if p.rsi_modified == p.rsi_modified]
+            participant_summary = {
+                "n": len(jumps),
+                "any_flagged": any(p.outside_physiological_bounds for p in jumps),
+                "flight_time_mean": mean(flight_times),
+                "flight_time_sd": pstdev(flight_times) if len(jumps) > 1 else 0.0,
+                "jump_height_mean": mean(heights_cm),
+                "jump_height_sd": pstdev(heights_cm) if len(jumps) > 1 else 0.0,
+                "ttt_mean": mean(ttts),
+                "ttt_sd": pstdev(ttts) if len(jumps) > 1 else 0.0,
+                "rsi_mean": mean(rsis) if rsis else float("nan"),
+                "rsi_sd": pstdev(rsis) if len(rsis) > 1 else 0.0,
+            }
             participants_summary.append(
                 {
                     "participant_id": participant_id,
-                    "rows": rows,
-                    "aggregate": aggregate,
+                    "summary": participant_summary,
                 }
             )
         summary.append({"video": video_name, "participants": participants_summary})
@@ -270,18 +272,17 @@ def run_analysis(
         if adaptive_skip_frames:
             job.log(
                 f"Frame-skip actief: {adaptive_skip_frames} frame(s) overslaan, "
-                f"{adaptive_dense_duration_s}s dense meten na een snelheidstrigger "
-                "(vereist een pixels-per-meter-kalibratie per videoresolutie -- "
-                "zonder kalibratie meet een video gewoon elk frame, zonder "
-                "melding in dit logpaneel)."
+                f"{adaptive_dense_duration_s}s dense meten na een snelheidstrigger."
             )
+
         if use_cache:
+            # Pad ingekort tot de laatste twee onderdelen (2026-09-22,
+            # opschonen-to-do C) -- de volledige OneDrive-map is lang en
+            # voegt in dit logpaneel niets toe.
+            short_cache_path = f"...\\{DETECTIONS_CACHE_DIR.parent.name}\\{DETECTIONS_CACHE_DIR.name}"
             job.log(
-                "Detectie-cache actief: per video worden ruwe /pose/-detecties "
-                f"opgeslagen in {DETECTIONS_CACHE_DIR} (en hergebruikt als een "
-                "eerdere cache voor dezelfde video + hetzelfde pose-model + "
-                "dezelfde frame-skip-instelling bestaat -- een andere "
-                "instelling mist de cache gewoon en detecteert opnieuw)."
+                f"Detectie-cache actief: eerdere /pose/-detecties worden "
+                f"hergebruikt indien beschikbaar (opslag: {short_cache_path})."
             )
         job.log(f"\n--- /pose/: laden YOLO-pose model ({yolo_model_name}) ---")
         yolo_model = create_yolo_pose_model(model_name=yolo_model_name)
@@ -298,6 +299,12 @@ def run_analysis(
             assignment = session.who_assignments.get(video.video_id)
             if assignment is None:
                 job.log(f"Overslaan {video.video_id} ({video.path.name}): geen /who/-toewijzing.")
+                continue
+            if not assignment.participant_ids:
+                job.log(
+                    f"Overslaan {video.video_id} ({video.path.name}): "
+                    "geen deelnemers toegewezen (0 atleten)."
+                )
                 continue
 
             job.log(
@@ -334,6 +341,7 @@ def run_analysis(
                 if use_cache
                 else None
             )
+
             tracks = identify_athletes_in_video(
                 video_path=video.path,
                 detect_fn=detect_fn,
@@ -343,7 +351,15 @@ def run_analysis(
                 detections_cache_path=detections_cache_path,
                 adaptive_skip_frames=adaptive_skip_frames,
                 adaptive_dense_duration_s=adaptive_dense_duration_s,
+                # Toegevoegd 2026-09-22 (opschonen-to-do E): live
+                # per-video voortgang in de UI i.p.v. alleen op de
+                # server-cmd -- zie Job.set_video_progress.
+                progress_callback=lambda info, _video_id=video.video_id: job.set_video_progress(
+                    _video_id, info
+                ),
             )
+            with job.lock:
+                job.current_video_progress = None
 
             recorded_at = get_recording_datetime(video.path)
             if recorded_at is None:
@@ -441,13 +457,6 @@ def run_analysis(
                             "-- buiten het fysiologisch mogelijke bereik, "
                             "waarschijnlijk een detectiefout."
                         )
-                    elif parameters.unusually_low_jump:
-                        job.log(
-                            f"    {video.video_id}/{participant_id}: sprong "
-                            f"{jump.jump_number} is opvallend laag "
-                            f"({parameters.jump_height_m:.3f}m) -- controleer of dit "
-                            "een echte sprong is of een detectiefout."
-                        )
                     with job.lock:
                         job.per_participant_counts[participant_id] = (
                             job.per_participant_counts.get(participant_id, 0) + 1
@@ -474,3 +483,6 @@ def run_analysis(
         with job.lock:
             job.status = "error"
             job.error_message = str(exc)
+    finally:
+        with job.lock:
+            job.current_video_progress = None

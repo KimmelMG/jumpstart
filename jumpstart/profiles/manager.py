@@ -79,7 +79,7 @@ def load_participant_table(input_path: Path) -> pd.DataFrame:
     else:
         table = pd.read_excel(input_path)
 
-    required = set(TEMPLATE_COLUMNS) - {"weight_kg"}
+    required = set(TEMPLATE_COLUMNS) - {"weight_kg", "leg_length_cm"}
     missing = required - set(table.columns)
     if missing:
         raise ValueError(
@@ -101,12 +101,13 @@ def build_profiles(table: pd.DataFrame) -> List[Participant]:
     profiles = []
     for _, row in table.iterrows():
         weight = row.get("weight_kg")
+        leg_length = row.get("leg_length_cm")
         profiles.append(
             Participant(
                 participant_id=str(row["participant_id"]),
                 name=str(row["name"]),
                 height_cm=float(row["height_cm"]),
-                leg_length_cm=float(row["leg_length_cm"]),
+                leg_length_cm=float(leg_length) if pd.notna(leg_length) else None,
                 weight_kg=float(weight) if pd.notna(weight) else None,
             )
         )

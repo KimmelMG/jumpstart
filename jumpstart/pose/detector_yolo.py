@@ -1,14 +1,10 @@
-"""YOLO-pose pose estimation for /pose/ -- alternative backend to
-jumpstart/pose/detector.py's MediaPipe implementation.
+"""YOLO-pose pose estimation for /pose/.
 
-NEEDS REVIEW -- built in one pass, never run against real footage or
-even a real YOLO install: this sandbox has no internet access (see
-jumpstart/pose/detector.py's own docstring for the same caveat about
-MediaPipe), so `pip install ultralytics` and the model-weight download
-below have only been checked for API correctness against Ultralytics'
-own published documentation, not actually executed here. Test the
-very first run somewhere with normal internet access, same as the
-MediaPipe model download.
+Sinds het verwijderen van de MediaPipe-backend (opschonen A1,
+2026-09-17) de enige pose-detectiebackend in dit project, en
+inmiddels de geteste/aanbevolen backend -- de eerdere "NEEDS REVIEW,
+nog niet tegen echte beelden getest"-kanttekening hieronder klopte
+niet meer en is verwijderd (2026-09-22, opschonen-to-do C).
 
 Why this exists: added 2026-08-10 after real-footage debug-CSV
 analysis (see jumpstart/tracking/tracker.py and jumpstart/events/
@@ -173,9 +169,7 @@ def detect_people_yolo(
             cost to detecting small/far-away people. Output
             coordinates are always rescaled back to the original
             frame's pixel space regardless of this setting, so
-            callers never need to adjust for it. NEEDS REVIEW: this
-            speed/accuracy tradeoff has not been checked against real
-            footage.
+            callers never need to adjust for it. 
 
     Returns:
         One PersonDetection per person YOLO detected in this frame
