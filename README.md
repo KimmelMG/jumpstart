@@ -5,15 +5,47 @@ jumps) uit video: personen-detectie (YOLO-pose), tracking, sprongdetectie
 en het berekenen van sprongmaten (hoogte, vluchttijd, RSI, etc.), met
 zowel een command-line-route als een lokale webinterface.
 
-## Snel starten
+## Snel starten (Windows)
 
-Dubbelklik op `Jumpstart_starten.bat`. Dat regelt bij de eerste keer
-automatisch een virtuele omgeving + alle benodigde packages, en start
-daarna de webinterface (opent zelf een browsertab).
+1. **Download de hele repository, niet losse bestanden.** Groene knop
+   **Code -> Download ZIP**.
+2. **Pak de zip uit:** rechtermuisknop op de zip -> **Alles uitpakken...**.
+   Dubbelklikken op de .bat *binnen* de zip werkt niet.
+3. **Dubbelklik `Jumpstart_starten.bat`** in de uitgepakte map. Naast de
+   .bat hoort de map `Jumpstart` te staan. Verschijnt er een blauw
+   Windows-venster ("Windows heeft uw pc beveiligd"), kies dan
+   **Meer informatie -> Toch uitvoeren**.
+4. De eerste keer installeert Jumpstart een eigen Python 3.12 en alle
+   onderdelen (een paar minuten, internet nodig, ongeveer 3 GB in
+   `%USERPROFILE%\.jumpstart`). Je hoeft zelf geen Python te installeren;
+   een Python die al op je computer staat (Microsoft Store, Anaconda, ...)
+   wordt bewust niet gebruikt. Daarna opent de browser vanzelf op
+   `http://127.0.0.1:8000`. Laat het zwarte venster open; sluiten stopt
+   Jumpstart.
 
-Wil je zelf handmatig installeren of vanaf de command line werken, zie
-de instructies in `jumpstart_webapp/README.md`.
+Daarna start Jumpstart binnen enkele seconden, ook zonder internet. Je kunt
+ook de snelkoppeling gebruiken die op je bureaublad is aangemaakt.
 
+**Let op**
+
+- Start Jumpstart alleen via `Jumpstart_starten.bat` (of de snelkoppeling),
+  niet vanuit Spyder, Jupyter of een andere editor.
+- Windows vraagt eenmalig om beheerdersrechten voor de firewall. Kies **Ja**
+  als je een telefoon of tablet wilt gebruiken; bij **Nee** werkt Jumpstart
+  alleen op deze computer.
+- Kan Jumpstart niet starten, dan staat in het zwarte venster wat er mis is
+  en wat je kunt doen.
+
+## Voor ontwikkelaars
+
+De packages en hun exacte versies staan in `Jumpstart/pyproject.toml` en
+`Jumpstart/uv.lock`, en worden geinstalleerd met het meegeleverde
+`Jumpstart/tools/uv.exe` ([uv](https://github.com/astral-sh/uv), licentie
+in `Jumpstart/tools/`). Een versie aanpassen: wijzig `pyproject.toml`, draai
+in de map `Jumpstart` het commando `tools\uv.exe lock` en commit beide
+bestanden samen. Meer achtergrond:
+[`Jumpstart/frontend_webapp/README.md`](Jumpstart/frontend_webapp/README.md).
+  
 ## Structuur
 
 ```
@@ -26,8 +58,8 @@ jumpstart_webapp/          lokale webinterface (FastAPI + HTMX)
 Jumpstart_starten.bat      dubbelklikken om te starten (installeert
                             zo nodig eerst de venv/packages)
 participant_template.xlsx  leeg deelnemersbestand om in te vullen
-requirements-analysis.txt  Python-dependencies voor de analyse
-requirements-web.txt       Python-dependencies voor de webinterface
+  tools/uv.exe                 installeert Python + packages (niet zelf starten)
+  pyproject.toml, uv.lock      vastgelegde Python-versie en packageversies
 ```
 
 ## Deelnemersbestand
