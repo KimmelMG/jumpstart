@@ -1,215 +1,113 @@
 @echo off
 setlocal EnableExtensions
-cd /d "%~dp0"
+rem ===================================================================
+rem  Jumpstart starten - dubbelklik dit bestand.
+rem
+rem  De eerste keer installeert uv (meegeleverd in Jumpstart\tools) een
+rem  eigen Python 3.12 en precies de vastgelegde packages (pyproject.toml
+rem  + uv.lock) in %USERPROFILE%\.jumpstart. Een Python die al op de
+rem  computer staat (Microsoft Store, Anaconda, ...) wordt bewust NIET
+rem  gebruikt. Daarna start dit bestand alleen nog de server.
+rem ===================================================================
 
-set "VENVDIR=%USERPROFILE%\.jumpstart\venv"
-set "INSTALL_MARKER=%VENVDIR%\.install_ok"
+set "HERE=%~dp0"
+set "APPDIR=%~dp0Jumpstart"
+set "UV=%APPDIR%\tools\uv.exe"
 
-if exist "%INSTALL_MARKER%" if exist "%VENVDIR%\Scripts\python.exe" goto :run
+rem --- Controle 1: niet rechtstreeks vanuit een zip gestart? ---
+rem Dubbelklik je de .bat binnen een zip, dan pakt Windows alleen dit ene
+rem bestand uit naar een tijdelijke map en ontbreekt de rest.
+if /i not "%HERE:\AppData\Local\Temp\=%"=="%HERE%" goto :from_zip
 
+rem --- Controle 2: is de map compleet? ---
+if not exist "%APPDIR%\frontend_webapp\app.py" goto :incomplete
+if not exist "%APPDIR%\backend_script\__init__.py" goto :incomplete
+if not exist "%APPDIR%\pyproject.toml" goto :incomplete
+if not exist "%APPDIR%\uv.lock" goto :incomplete
+if not exist "%UV%" goto :incomplete
+
+rem --- Alles van Jumpstart komt buiten OneDrive, in je eigen gebruikersmap ---
+set "JS_HOME=%USERPROFILE%\.jumpstart"
+set "UV_PYTHON_INSTALL_DIR=%JS_HOME%\python"
+set "UV_PROJECT_ENVIRONMENT=%JS_HOME%\env"
+set "UV_CACHE_DIR=%JS_HOME%\cache"
+rem Alleen de eigen Python van Jumpstart, nooit een andere op deze computer.
+set "UV_PYTHON_PREFERENCE=only-managed"
+rem Certificaten van Windows gebruiken (nodig op bedrijfs-/ziekenhuisnetwerken).
+set "UV_SYSTEM_CERTS=true"
+set "UV_LINK_MODE=copy"
+set "ENVPY=%JS_HOME%\env\Scripts\python.exe"
+
+cd /d "%APPDIR%"
+
+if not exist "%ENVPY%" goto :first_install_message
+echo [Jumpstart] Installatie controleren...
+goto :sync
+
+:first_install_message
 echo.
-echo [Jumpstart] Geen complete virtuele omgeving gevonden - installatie wordt (opnieuw) gestart.
-echo [Jumpstart] Dit duurt de eerste keer een paar minuten ^(opencv/ultralytics zijn grote packages^).
-echo [Jumpstart] De virtuele omgeving komt te staan in:
-echo [Jumpstart]   %VENVDIR%
-echo [Jumpstart] ^(buiten je OneDrive-map en buiten de map van de Microsoft Store-Python,
-echo [Jumpstart]  om synchronisatie- en padproblemen te vermijden^)
+echo [Jumpstart] Eerste keer: Python en alle onderdelen worden geinstalleerd in
+echo [Jumpstart]   %JS_HOME%
+echo [Jumpstart] Dit duurt een paar minuten en heeft internet nodig. Daarna gaat
+echo [Jumpstart] opstarten binnen enkele seconden, ook zonder internet.
 echo.
 
-call :find_python
-if not defined PYEXE call :install_python_via_winget
-if not defined PYEXE goto :no_python
-
-echo [Jumpstart] Python gevonden: %PYDESC%
-if defined STORE_PYTHON_ONLY (
-    echo.
-    echo [Jumpstart] LET OP: alleen de Microsoft Store-versie van Python is gevonden.
-    echo [Jumpstart] Dat kan werken, maar gaf op dit type installatie eerder problemen.
-    echo [Jumpstart] Loopt de installatie hieronder vast, installeer dan Python via
-    echo [Jumpstart]   https://www.python.org/downloads/windows/
-    echo [Jumpstart] ^(vink "Add python.exe to PATH" aan tijdens installatie^) en start
-    echo [Jumpstart] dit bestand daarna opnieuw.
-)
+:sync
+"%UV%" sync --locked
+if not errorlevel 1 goto :run
+if not exist "%ENVPY%" goto :install_failed
 echo.
-
-if exist "%INSTALL_MARKER%" del /f /q "%INSTALL_MARKER%" >nul 2>nul
-
-echo [Jumpstart] Virtuele omgeving aanmaken...
-"%PYEXE%" %PYARGS% -m venv "%VENVDIR%"
-if errorlevel 1 goto :venv_failed
-
-if not exist "%VENVDIR%\Scripts\python.exe" goto :venv_redirected
-
-set "VENVPY=%VENVDIR%\Scripts\python.exe"
-
-echo [Jumpstart] pip bijwerken...
-"%VENVPY%" -m pip install --upgrade pip
-if errorlevel 1 (
-    echo [Jumpstart] Mislukt, nieuwe poging...
-    "%VENVPY%" -m pip install --upgrade pip
-    if errorlevel 1 goto :install_failed
-)
-
-echo [Jumpstart] Certificaatfix installeren ^(voorkomt SSL-fouten op bedrijfsnetwerken^)...
-"%VENVPY%" -m pip install pip-system-certs
-if errorlevel 1 (
-    echo [Jumpstart] Mislukt, nieuwe poging...
-    "%VENVPY%" -m pip install pip-system-certs
-    if errorlevel 1 goto :install_failed
-)
-
-echo [Jumpstart] Webinterface-packages installeren...
-"%VENVPY%" -m pip install -r "%~dp0requirements-web.txt"
-if errorlevel 1 (
-    echo [Jumpstart] Mislukt, nieuwe poging...
-    "%VENVPY%" -m pip install -r "%~dp0requirements-web.txt"
-    if errorlevel 1 goto :install_failed
-)
-
-echo [Jumpstart] Analyse- en pose-detectiepackages installeren - dit duurt het langst...
-"%VENVPY%" -m pip install -r "%~dp0requirements-analysis.txt"
-if errorlevel 1 (
-    echo [Jumpstart] Mislukt, nieuwe poging...
-    "%VENVPY%" -m pip install -r "%~dp0requirements-analysis.txt"
-    if errorlevel 1 goto :install_failed
-)
-
-echo Y> "%INSTALL_MARKER%"
-
+echo [Jumpstart] LET OP: bijwerken is niet gelukt - geen internet? De bestaande
+echo [Jumpstart] installatie wordt gebruikt.
 echo.
-echo [Jumpstart] Installatie voltooid.
-echo.
-goto :run
-
-:no_python
-echo [Jumpstart] Geen Python gevonden op dit systeem en automatisch
-echo [Jumpstart] installeren is niet gelukt ^(of winget ontbreekt op deze pc^).
-echo [Jumpstart] Installeer Python 3 handmatig via python.org en probeer het
-echo [Jumpstart] daarna opnieuw:
-echo [Jumpstart]   https://www.python.org/downloads/windows/
-echo [Jumpstart] ^(vink "Add python.exe to PATH" aan tijdens installatie^)
-pause
-exit /b 1
-
-:venv_failed
-echo.
-echo [Jumpstart] Aanmaken van de virtuele omgeving is mislukt - zie de foutmelding hierboven.
-pause
-exit /b 1
-
-:venv_redirected
-echo.
-echo [Jumpstart] Aanmaken van de virtuele omgeving is "gelukt" volgens Python, maar
-echo [Jumpstart]   %VENVDIR%\Scripts\python.exe
-echo [Jumpstart] bestaat niet. Windows heeft de map stiekem omgeleid naar een andere
-echo [Jumpstart] locatie - dit gebeurt met de Microsoft Store-versie van Python.
-echo [Jumpstart] Installeer Python via python.org
-echo [Jumpstart]   https://www.python.org/downloads/windows/
-echo [Jumpstart] ^(vink "Add python.exe to PATH" aan tijdens installatie^), verwijder
-echo [Jumpstart] daarna de map "%VENVDIR%" en start dit bestand opnieuw.
-pause
-exit /b 1
-
-:install_failed
-echo.
-echo [Jumpstart] Installeren van packages is mislukt - zie de foutmelding hierboven.
-echo [Jumpstart] Mogelijke oorzaken: geen/onstabiele internetverbinding, een strenge
-echo [Jumpstart] firewall/proxy, of te weinig schijfruimte. Los dat op en start dit
-echo [Jumpstart] bestand daarna gewoon opnieuw - een mislukte installatie wordt
-echo [Jumpstart] automatisch hervat.
-pause
-exit /b 1
 
 :run
-powershell -NoProfile -Command "$d=[Environment]::GetFolderPath('Desktop'); $p=Join-Path $d 'Jumpstart.lnk'; if (-not (Test-Path $p)) { $s=(New-Object -ComObject WScript.Shell).CreateShortcut($p); $s.TargetPath='%~dp0Jumpstart_starten.bat'; $s.WorkingDirectory='%~dp0'; $s.IconLocation='%~dp0jumpstart_icon.ico'; $s.Save() }" >nul 2>nul
+powershell -NoProfile -Command "$d=[Environment]::GetFolderPath('Desktop'); $p=Join-Path $d 'Jumpstart.lnk'; if (-not (Test-Path $p)) { $s=(New-Object -ComObject WScript.Shell).CreateShortcut($p); $s.TargetPath='%~dp0Jumpstart_starten.bat'; $s.WorkingDirectory='%~dp0'; $s.IconLocation='%APPDIR%\jumpstart_icon.ico'; $s.Save() }" >nul 2>nul
 
 call :ensure_firewall_rule
 
-echo [Jumpstart] Server wordt gestart...
-echo [Jumpstart] Dit venster laat de voortgang/logs zien - laat het openstaan
-echo [Jumpstart] zolang je de webinterface gebruikt. Sluiten stopt de server.
+echo [Jumpstart] Server wordt gestart - de browser opent vanzelf.
+echo [Jumpstart] Laat dit venster open zolang je Jumpstart gebruikt.
+echo [Jumpstart] Sluiten stopt de server.
 echo.
 
-start "" cmd /c "timeout /t 3 >nul & start http://127.0.0.1:8000"
-
-"%VENVDIR%\Scripts\python.exe" -m jumpstart_webapp.run_server
+"%ENVPY%" -m frontend_webapp.run_server
 
 echo.
 echo [Jumpstart] De server is gestopt.
 pause
 exit /b 0
 
-:install_python_via_winget
-where winget >nul 2>nul
-if errorlevel 1 exit /b 1
-
-echo [Jumpstart] Geen Python gevonden - wordt automatisch geinstalleerd via
-echo [Jumpstart] winget ^(Windows Package Manager^). Dit duurt een paar
-echo [Jumpstart] minuten en werkt zonder adminrechten...
-winget install --id Python.Python.3.11 -e --scope user --silent --accept-package-agreements --accept-source-agreements
-if errorlevel 1 (
-    echo [Jumpstart] Automatisch installeren via winget is niet gelukt.
-    exit /b 1
-)
-
-call :find_python
-if not defined PYEXE exit /b 1
-
-echo [Jumpstart] Python automatisch geinstalleerd: %PYDESC%
+:from_zip
 echo.
-exit /b 0
+echo [Jumpstart] Dit bestand is rechtstreeks vanuit een zip-bestand gestart.
+echo [Jumpstart] Dat werkt niet: Windows pakt dan alleen dit ene bestand uit.
+echo [Jumpstart] Doe dit: rechtermuisknop op de zip -^> "Alles uitpakken...",
+echo [Jumpstart] open de uitgepakte map en dubbelklik daar Jumpstart_starten.bat.
+pause
+exit /b 1
 
-:find_python
-set "PYEXE="
-set "PYARGS="
-set "PYDESC="
-set "STORE_PYTHON_ONLY="
+:incomplete
+echo.
+echo [Jumpstart] De map is niet compleet. Naast dit bestand hoort de map
+echo [Jumpstart] "Jumpstart" te staan, met daarin onder meer frontend_webapp,
+echo [Jumpstart] backend_script, pyproject.toml, uv.lock en tools\uv.exe.
+echo [Jumpstart] Dit bestand staat nu in:
+echo [Jumpstart]   %HERE%
+echo [Jumpstart] Download de hele map als zip ^(GitHub: Code -^> Download ZIP^),
+echo [Jumpstart] pak hem uit en start Jumpstart_starten.bat vanuit de uitgepakte map.
+pause
+exit /b 1
 
-where py >nul 2>nul
-if not errorlevel 1 (
-    set "PYEXE=py"
-    set "PYARGS=-3"
-    set "PYDESC=py -3 ^(Python Launcher for Windows^)"
-    exit /b 0
-)
-
-for /f "delims=" %%P in ('where python 2^>nul') do (
-    echo %%P | findstr /i "WindowsApps" >nul
-    if errorlevel 1 (
-        set "PYEXE=%%P"
-        set "PYDESC=%%P"
-        exit /b 0
-    )
-)
-
-for %%C in (
-    "%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
-    "%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
-    "%LOCALAPPDATA%\Programs\Python\Python310\python.exe"
-    "%LOCALAPPDATA%\Programs\Python\Python39\python.exe"
-    "%USERPROFILE%\anaconda3\python.exe"
-    "%USERPROFILE%\miniconda3\python.exe"
-    "%ProgramData%\Anaconda3\python.exe"
-    "%ProgramData%\miniconda3\python.exe"
-    "C:\Python312\python.exe"
-    "C:\Python311\python.exe"
-    "C:\Python310\python.exe"
-) do (
-    if exist "%%~C" (
-        set "PYEXE=%%~C"
-        set "PYDESC=%%~C"
-        exit /b 0
-    )
-)
-
-where python >nul 2>nul
-if not errorlevel 1 (
-    set "PYEXE=python"
-    set "PYDESC=python ^(Microsoft Store-versie^)"
-    set "STORE_PYTHON_ONLY=1"
-    exit /b 0
-)
-
+:install_failed
+echo.
+echo [Jumpstart] Installeren is niet gelukt - zie de melding hierboven.
+echo [Jumpstart] Mogelijke oorzaken: geen of onstabiele internetverbinding, een
+echo [Jumpstart] netwerk dat downloads blokkeert, beveiliging die tools\uv.exe
+echo [Jumpstart] tegenhoudt, of te weinig schijfruimte ^(nodig: ongeveer 3 GB^).
+echo [Jumpstart] Los dat op en start dit bestand opnieuw - het gaat verder waar
+echo [Jumpstart] het gebleven was.
+pause
 exit /b 1
 
 :ensure_firewall_rule

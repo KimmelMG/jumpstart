@@ -1,0 +1,41 @@
+# Jumpstart -- Python-omgeving
+#
+# Deze vaste versies worden door Jumpstart_starten.bat (via tools\uv.exe)
+# exact zo geinstalleerd, voor iedereen gelijk. Ze komen uit de omgeving
+# waarmee Jumpstart is ontwikkeld en gevalideerd (Python 3.12.10, 2026-09).
+#
+# Een versie aanpassen? Wijzig hem hieronder en draai daarna in deze map:
+#     tools\uv.exe lock
+# Commit pyproject.toml en uv.lock altijd samen.
+
+[project]
+name = "jumpstart"
+version = "1.0.0"
+description = "Markerless analyse van countermovement jumps uit video, met een lokale webinterface."
+requires-python = "==3.12.*"
+dependencies = [
+    # Webinterface
+    "fastapi==0.141.1",
+    "uvicorn[standard]==0.52.1",
+    "jinja2==3.1.6",
+    "python-multipart==0.0.32",
+    "qrcode==8.2",
+    # Certificaten van Windows gebruiken (bedrijfs-/ziekenhuisnetwerken)
+    "pip-system-certs==5.3",
+    # Analyse en pose-detectie
+    "numpy==2.5.1",
+    "scipy==1.18.0",
+    "pandas==3.0.3",
+    "opencv-python==5.0.0.93",
+    "matplotlib==3.11.0",
+    "openpyxl==3.1.5",
+    "ultralytics==8.4.118",
+    "torch==2.13.0",
+    "torchvision==0.28.0",
+]
+
+[tool.uv]
+# Jumpstart is een programma, geen installeerbaar package.
+package = false
+# Alleen Windows (64-bit) is de doelomgeving.
+environments = ["sys_platform == 'win32' and platform_machine == 'AMD64'"]

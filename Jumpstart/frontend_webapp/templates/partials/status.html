@@ -1,0 +1,92 @@
+<div id="status-wrap" class="mt-6"
+     {% if job.status in ("queued", "running") %}hx-get="/status" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+
+{% if job.status == "queued" %}
+    <!-- Toegevoegd 2026-09-22 (opschonen-to-do E): "queued" had hier
+         voorheen geen eigen weergave (viel buiten de if hieronder) en
+         de wrapper-div polde ook niet tijdens het wachten, dus een
+         wachtende sessie zag pas iets zodra de analyse zelf al liep. -->
+    <div class="flex items-center gap-2 mb-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-slate-400 animate-pulse"></span>
+        <span class="text-slate-300 text-sm font-medium">In de wachtrij -- positie {{ job.queue_position }}</span>
+    </div>
+{% elif job.status in ("running", "done", "error") %}
+    <div class="flex items-center gap-2 mb-2">
+        {% if job.status == "running" %}
+        <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+        <span class="text-amber-300 text-sm font-medium">Bezig...</span>
+        {% elif job.status == "done" %}
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+        <span class="text-emerald-300 text-sm font-medium">Klaar</span>
+        {% else %}
+        <span class="w-2.5 h-2.5 rounded-full bg-red-400"></span>
+        <span class="text-red-300 text-sm font-medium">Fout opgetreden</span>
+        {% endif %}
+    </div>
+
+    {% if job.status == "running" and job.current_video_progress %}
+    <div class="text-xs text-slate-300 mb-2">
+        {{ job.current_video_progress.video_id }}: {{ job.current_video_progress.label }} --
+        {{ "%.0f"|format(job.current_video_progress.percent) }}%
+        ({{ "%.0f"|format(job.current_video_progress.elapsed_s) }}s verstreken{% if job.current_video_progress.eta_s is not none %}, ETA ~{{ "%.0f"|format(job.current_video_progress.eta_s) }}s{% endif %})
+    </div>
+    {% endif %}
+
+    <div class="bg-black/60 rounded-lg p-4 text-xs text-emerald-300 log-panel max-h-80 overflow-y-auto border border-white/10">{{ job.log_lines|join("\n") }}</div>
+
+    {% if job.status == "done" %}
+    <div class="mt-5 jump-card rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-white mb-2">Resultaten</h3>
+        <p class="text-slate-300 mb-3">{{ job.result_count }} sprong(en) gevonden, over {{ job.per_participant_counts|length }} atleet/atleten.</p>
+        {% if job.results_summary %}
+        <!-- Toegevoegd 2026-09-15 (TODO.md, "Resultatenpaneel uitbreiden"),
+             herzien 2026-09-22 (opschonen-to-do F): niet meer per
+             sprong met een aparte gemiddelde-rij, maar altijd één
+             rij per atleet per video (gemiddelde +/- SD, of gewoon de
+             waarde bij 1 sprong). Zie pipeline.build_results_summary. -->
+        <div class="space-y-4 mb-4">
+            {% for video_block in job.results_summary %}
+            <div class="border border-white/10 rounded-lg overflow-hidden">
+                <div class="bg-white/5 px-3 py-2 text-sm font-medium text-slate-200">{{ video_block.video }}</div>
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-slate-500 text-xs border-b border-white/10">
+                            <th class="py-1 px-3 font-normal">Atleet</th>
+                            <th class="py-1 px-3 font-normal">Aantal sprongen</th>
+                            <th class="py-1 px-3 font-normal">Vluchttijd (s)</th>
+                            <th class="py-1 px-3 font-normal">Spronghoogte (cm)</th>
+                            <th class="py-1 px-3 font-normal">TTT (s)</th>
+                            <th class="py-1 px-3 font-normal">RSImod</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in video_block.participants %}
+                        <tr class="border-b border-white/5{% if p.summary.any_flagged %} text-red-300{% endif %}">
+                            <td class="py-1 px-3">{{ p.participant_id }}{% if p.summary.any_flagged %} ⚠{% endif %}</td>
+                            <td class="py-1 px-3">{{ p.summary.n }}</td>
+                            <td class="py-1 px-3">{{ "%.3f"|format(p.summary.flight_time_mean) }}{% if p.summary.n > 1 %} &plusmn; {{ "%.3f"|format(p.summary.flight_time_sd) }}{% endif %}</td>
+                            <td class="py-1 px-3">{{ "%.1f"|format(p.summary.jump_height_mean) }}{% if p.summary.n > 1 %} &plusmn; {{ "%.1f"|format(p.summary.jump_height_sd) }}{% endif %}</td>
+                            <td class="py-1 px-3">{{ "%.3f"|format(p.summary.ttt_mean) }}{% if p.summary.n > 1 %} &plusmn; {{ "%.3f"|format(p.summary.ttt_sd) }}{% endif %}</td>
+                            <td class="py-1 px-3">{% if p.summary.rsi_mean == p.summary.rsi_mean %}{{ "%.2f"|format(p.summary.rsi_mean) }}{% if p.summary.n > 1 %} &plusmn; {{ "%.2f"|format(p.summary.rsi_sd) }}{% endif %}{% else %}--{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        <a href="/download" class="inline-block bg-emerald-600 hover:bg-emerald-500 transition text-white font-medium px-5 py-2.5 rounded-lg">
+            Resultaten downloaden ({{ job.export_path.name if job.export_path else "" }})
+        </a>
+        {% if job.debug_csv_run_dir %}
+        <a href="/download/debug_csv" class="inline-block ml-3 bg-slate-600 hover:bg-slate-500 transition text-white font-medium px-5 py-2.5 rounded-lg">
+            Debug-CSV's downloaden
+        </a>
+        {% endif %}
+    </div>
+    {% elif job.status == "error" %}
+    <p class="text-red-400 text-sm mt-3">{{ job.error_message }}</p>
+    {% endif %}
+{% endif %}
+</div>

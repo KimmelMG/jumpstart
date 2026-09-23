@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="nl" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title></title>
+    <link rel="stylesheet" href="/static/tailwind.min.css" />
+    <link rel="stylesheet" href="/static/style.css?v=20260915b" />
+    <script src="/static/htmx.min.js"></script>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:display_urn_x003a_schemas-microsoft-com_x003a_office_x003a_office_x0023_Editor msdt:dt="string">Kimmel, MG (bw)</mso:display_urn_x003a_schemas-microsoft-com_x003a_office_x003a_office_x0023_Editor>
+<mso:Order msdt:dt="string">9803800.00000000</mso:Order>
+<mso:ComplianceAssetId msdt:dt="string"></mso:ComplianceAssetId>
+<mso:_ExtendedDescription msdt:dt="string"></mso:_ExtendedDescription>
+<mso:display_urn_x003a_schemas-microsoft-com_x003a_office_x003a_office_x0023_Author msdt:dt="string">Kimmel, MG (bw)</mso:display_urn_x003a_schemas-microsoft-com_x003a_office_x003a_office_x0023_Author>
+<mso:TriggerFlowInfo msdt:dt="string"></mso:TriggerFlowInfo>
+<mso:ContentTypeId msdt:dt="string">0x01010033C2C253DFBE674080BCDBC5878188B3</mso:ContentTypeId>
+<mso:_SourceUrl msdt:dt="string"></mso:_SourceUrl>
+<mso:_SharedFileIndex msdt:dt="string"></mso:_SharedFileIndex>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
+</head>
+<body class="min-h-screen text-slate-100">
+    <!-- Watermerk (2026-09-15, TODO.md item 10): vast, vaag UMCG-logo +
+         naam op de achtergrond, zichtbaar op elk scherm van de webapp
+         (blijft staan bij HTMX-swaps, want die vervangen alleen de
+         binnenste panelen, niet <body> zelf). aria-hidden + pointer-
+         events:none zodat het geen invloed heeft op toegankelijkheid of
+         klikgedrag -- zie static/style.css voor de .watermark-stijl. -->
+    <div class="watermark" aria-hidden="true">
+        <img src="/static/umcg_logo.png" alt="" />
+        <span>Mathijs Kimmel</span>
+    </div>
+    <div class="max-w-5xl mx-auto px-6 py-10">
+        <header class="mb-10 flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight text-white">Jumpstart</h1>
+                <p class="text-slate-400 mt-1">Automatische markerless spronganalyse voor RTP-parameters voor meerdere deelnemers uit dezelfde video's</p>
+            </div>
+            <a href="/template" class="jump-card px-4 py-2 rounded-lg text-sm font-medium text-slate-200 hover:text-white hover:bg-white/10 transition">
+                Deelnemerstemplate downloaden
+            </a>
+        </header>
+
+        <!-- Stepper -->
+            {% include "partials/stepper.html" %}
+
+        <!-- Step 1: setup -->
+        <section class="jump-card rounded-2xl p-6 mb-8">
+            <h2 class="text-xl font-semibold text-white mb-4">1. Deelnemers &amp; video's</h2>
+            <form hx-post="/setup" hx-target="#videos-panel" hx-swap="innerHTML" hx-encoding="multipart/form-data" class="space-y-5">
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Ingevuld deelnemersbestand (.xlsx of .csv)</label>
+                    <input type="file" name="participants_file" required accept=".xlsx,.csv"
+                           class="block w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-600 file:text-white file:font-medium hover:file:bg-emerald-500 bg-white/5 rounded-lg" />
+                </div>
+
+                               <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Video's</label>
+                    <div class="flex flex-wrap gap-4 mb-3 text-sm">
+                        <label class="flex items-center gap-2"><input type="radio" name="video_mode" value="folder" checked onclick="toggleVideoMode()"> Map met video's (hele sessie in één keer)</label>
+                        <label class="flex items-center gap-2"><input type="radio" name="video_mode" value="files" onclick="toggleVideoMode()"> Losse videopaden</label>
+                        <label class="flex items-center gap-2"><input type="radio" name="video_mode" value="upload" onclick="toggleVideoMode()"> Video's uploaden</label>
+                    </div>
+                    <div id="video-mode-folder">
+                        <div class="flex gap-2">
+                            <button type="button" onclick="browseFolder()" id="browse-folder-btn"
+                                    class="bg-emerald-600 hover:bg-emerald-500 transition text-white font-medium px-4 py-2 rounded-lg text-sm whitespace-nowrap">
+                                Bladeren...
+                            </button>
+                            <input type="text" name="video_folder" id="video-folder-input" placeholder='C:\Videos\Session1' required
+                                class="flex-1 bg-white/5 rounded-lg px-3 py-2 text-sm placeholder-slate-500 border border-white/10 focus:outline-none focus:border-emerald-500" />
+                        </div>
+                        <label class="flex items-center gap-2 mt-2 text-sm text-slate-400">
+                            <input type="checkbox" name="recursive" value="1" checked> Ook submappen doorzoeken
+                        </label>
+                        <p class="text-xs text-slate-500 mt-1">"Bladeren..." werkt alleen op de pc waar deze webapp zelf draait.</p>
+                    </div>
+                    <div id="video-mode-files" class="hidden">
+                        <div class="flex gap-2">
+                            <button type="button" onclick="browseFiles()" id="browse-files-btn"
+                                    class="bg-emerald-600 hover:bg-emerald-500 transition text-white font-medium px-4 py-2 rounded-lg text-sm whitespace-nowrap self-start">
+                                Bladeren...
+                            </button>
+                            <textarea name="video_paths_text" id="video-paths-textarea" rows="3" placeholder='C:\Videos\video1.mp4&#10;C:\Videos\video2.mp4' 
+                                    class="flex-1 bg-white/5 rounded-lg px-3 py-2 text-sm placeholder-slate-500 border border-white/10 focus:outline-none focus:border-emerald-500"></textarea>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-1">Eén pad per regel, of gebruik "Bladeren..." (alleen op de pc waar deze webapp zelf draait).</p>
+                    </div>
+                                        <div id="video-mode-upload" class="hidden">
+                        <input type="file" name="video_files" multiple accept=".mp4,.mov,.m4v" 
+                               class="block w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-600 file:text-white file:font-medium hover:file:bg-emerald-500 bg-white/5 rounded-lg" /> 
+                        <p class="text-xs text-slate-500 mt-1">Handig vanaf een telefoon/tablet -- grote bestanden kunnen even duren over wifi/mobiel internet.</p>
+                    </div>
+                </div>
+
+                <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 transition text-white font-medium px-5 py-2.5 rounded-lg">
+                    Deelnemers &amp; video's registreren
+                </button>
+            </form>
+        </section>
+
+        <div id="videos-panel" hx-get="/resume/videos" hx-trigger="load" hx-swap="innerHTML"></div>
+        <div id="who-panel" hx-get="/resume/who" hx-trigger="load" hx-swap="innerHTML"></div>
+        <div id="analysis-panel" hx-get="/resume/analysis" hx-trigger="load" hx-swap="innerHTML"></div>
+    </div>
+
+    <script>
+        function toggleVideoMode() {
+            const mode = document.querySelector('input[name=video_mode]:checked').value;
+            document.getElementById('video-mode-folder').classList.toggle('hidden', mode !== 'folder');
+            document.getElementById('video-mode-files').classList.toggle('hidden', mode !== 'files');
+            document.getElementById('video-mode-upload').classList.toggle('hidden', mode !== 'upload');
+
+            document.getElementById('video-folder-input').required = (mode === 'folder');
+            document.getElementById('video-paths-textarea').required = (mode === 'files');
+            document.querySelector('input[name=video_files]').required = (mode === 'upload');
+        }
+
+        // -- Server-side Verkenner-dialogen (2026-09-15, TODO.md item 5) --
+        // Werken alleen als deze pagina open staat op dezelfde pc als
+        // waar de server draait (de dialoog opent op DIE machine).
+        function browseFolder() {
+            const btn = document.getElementById('browse-folder-btn');
+            btn.disabled = true;
+            fetch('/setup/browse_folder', {method: 'POST'})
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        alert('Kon de Verkenner-mapdialoog niet openen: ' + data.error);
+                    } else if (data.path) {
+                        document.getElementById('video-folder-input').value = data.path;
+                    }
+                    // leeg pad = geannuleerd door de gebruiker, niets doen
+                })
+                .catch(err => alert('Kon de Verkenner-mapdialoog niet openen: ' + err))
+                .finally(() => { btn.disabled = false; });
+        }
+
+        function browseFiles() {
+            const btn = document.getElementById('browse-files-btn');
+            btn.disabled = true;
+            fetch('/setup/browse_files', {method: 'POST'})
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        alert('Kon de Verkenner-bestandsdialoog niet openen: ' + data.error);
+                    } else if (data.paths && data.paths.length) {
+                        document.getElementById('video-paths-textarea').value = data.paths.join('\n');
+                    }
+                    // lege lijst = geannuleerd door de gebruiker, niets doen
+                })
+                .catch(err => alert('Kon de Verkenner-bestandsdialoog niet openen: ' + err))
+                .finally(() => { btn.disabled = false; });
+        }
+
+        // -- Terminal-/logpaneel automatisch laten meescrollen ----------
+        // (2026-09-15, TODO.md item 12)
+        // Elke seconde vervangt htmx (hx-trigger="every 1s") de hele
+        // #status-wrap-div, inclusief het .log-panel-element met de
+        // live-terminal-/logoutput, door een verse versie -- een browser
+        // zet de scrollpositie van zo'n NIEUW element altijd terug naar
+        // boven, dus zonder dit stond je bij elke refresh weer bovenaan
+        // de output i.p.v. bij de nieuwste regels onderaan. Oplossing:
+        // onthoud vlak vóór elke swap of je al dicht bij de onderkant
+        // zat -- zo ja, dan blijf je automatisch "meescrollen" naar de
+        // nieuwste regel; zat je hoger op om terug te lezen, dan komt
+        // de scrollpositie na de swap weer op (ongeveer) dezelfde
+        // absolute plek te staan, zodat lezen niet steeds onderbroken
+        // wordt door een sprong naar boven.
+        let logPanelWasNearBottom = true;
+        let logPanelScrollTop = 0;
+
+        document.body.addEventListener('htmx:beforeSwap', function (evt) {
+            const panel = document.querySelector('.log-panel');
+            if (panel) {
+                logPanelScrollTop = panel.scrollTop;
+                logPanelWasNearBottom =
+                    panel.scrollHeight - panel.scrollTop - panel.clientHeight < 40;
+            }
+        });
+
+        document.body.addEventListener('htmx:afterSwap', function (evt) {
+            const panel = document.querySelector('.log-panel');
+            if (panel) {
+                panel.scrollTop = logPanelWasNearBottom ? panel.scrollHeight : logPanelScrollTop;
+            }
+        });
+
+        // -- /who/ click handling --------------------------------------
+function swapWhoPanel(html) {
+    const container = document.getElementById('who-panel');
+    container.innerHTML = html;
+    htmx.process(container); // activate hx-* attributes in the injected HTML (e.g. the analysis form)
+
+    // De backend stuurt de bovenste stepper mee als hx-swap-oob, maar
+    // whoAction() gaat buiten htmx's eigen ajax-mechanisme om (kale
+    // fetch + innerHTML), dus die oob-swap wordt nooit automatisch
+    // verwerkt -- de meegestuurde stepper belandt anders als losse
+    // kopie binnen #who-panel i.p.v. de echte stepper bovenaan te
+    // vervangen. Doe de verplaatsing hier zelf:
+    const oobStepper = container.querySelector('#stepper');
+    const realStepper = document.querySelector('#stepper');
+    if (oobStepper && realStepper && realStepper !== oobStepper) {
+        realStepper.replaceWith(oobStepper);
+    }
+}
+
+function whoImageClick(evt, videoId) {
+    const img = evt.target;
+    const rect = img.getBoundingClientRect();
+    const scaleX = img.naturalWidth / rect.width;
+    const scaleY = img.naturalHeight / rect.height;
+    const x = (evt.clientX - rect.left) * scaleX;
+    const y = (evt.clientY - rect.top) * scaleY;
+    const checked = document.querySelector('input[name=participant_choice]:checked');
+    const participantId = checked ? checked.value : null;
+    const forceEl = document.getElementById('force-recal');
+    const forceRecalibrate = forceEl ? forceEl.checked : false;
+
+    fetch('/who/click', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({video_id: videoId, participant_id: participantId, x: x, y: y, force_recalibrate: forceRecalibrate})
+    }).then(r => r.text()).then(swapWhoPanel);
+}
+
+function whoAction(path) {
+    fetch(path, {method: 'POST'}).then(r => r.text()).then(swapWhoPanel);
+}
+    </script>
+</body>
+</html>

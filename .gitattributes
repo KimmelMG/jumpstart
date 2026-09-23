@@ -1,0 +1,2 @@
+# Batch-bestanden altijd met Windows-regeleinden, ook in de GitHub-zip
+*.bat text eol=crlf

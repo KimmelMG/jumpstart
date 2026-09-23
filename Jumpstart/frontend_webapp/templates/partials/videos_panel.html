@@ -1,0 +1,37 @@
+{% if job.setup_error %}
+<section class="jump-card rounded-2xl p-6 mb-8 border-red-500/40">
+    <p class="text-red-400 font-medium">Kon niet starten: {{ job.setup_error }}</p>
+</section>
+{% elif job.session %}
+<section class="jump-card rounded-2xl p-6 mb-8">
+    <h2 class="text-xl font-semibold text-white mb-3">Geregistreerd</h2>
+    <p class="text-slate-300 mb-3">{{ job.session.participants|length }} deelnemer(s), {{ job.session.videos|length }} video('s).</p>
+    <ul class="text-sm text-slate-400 mb-5 space-y-1">
+        {% for v in job.session.videos %}
+        <li>&bull; {{ v.video_id }} -- {{ v.path.name }}</li>
+        {% endfor %}
+    </ul>
+   <button hx-get="/who/start" hx-target="#who-panel" hx-swap="innerHTML"
+            onclick="this.disabled = true; this.textContent = 'Toewijzing gestart \u2193';"
+            class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition text-white font-medium px-5 py-2.5 rounded-lg">
+        2. Start: atleten toewijzen per video
+    </button>
+</section>
+{% endif %}
+<html xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882"><head>
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:display_urn_x003a_schemas-microsoft-com_x003a_office_x003a_office_x0023_Editor msdt:dt="string">Kimmel, MG (bw)</mso:display_urn_x003a_schemas-microsoft-com_x003a_office_x003a_office_x0023_Editor>
+<mso:Order msdt:dt="string">9804200.00000000</mso:Order>
+<mso:ComplianceAssetId msdt:dt="string"></mso:ComplianceAssetId>
+<mso:_ExtendedDescription msdt:dt="string"></mso:_ExtendedDescription>
+<mso:display_urn_x003a_schemas-microsoft-com_x003a_office_x003a_office_x0023_Author msdt:dt="string">Kimmel, MG (bw)</mso:display_urn_x003a_schemas-microsoft-com_x003a_office_x003a_office_x0023_Author>
+<mso:TriggerFlowInfo msdt:dt="string"></mso:TriggerFlowInfo>
+<mso:ContentTypeId msdt:dt="string">0x01010033C2C253DFBE674080BCDBC5878188B3</mso:ContentTypeId>
+<mso:_SourceUrl msdt:dt="string"></mso:_SourceUrl>
+<mso:_SharedFileIndex msdt:dt="string"></mso:_SharedFileIndex>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
+<title></title></head>
+
+{% set oob = True %}{% include "partials/stepper.html" %}
