@@ -1,7 +1,7 @@
 # Jumpstart
 
 Python-tool voor markerless sprongdetectie en -analyse (countermovement
-jumps) uit video: personen-detectie (YOLO-pose), tracking, sprongdetectie
+jumps) uit video bij meerdere personen in beeld: personen-detectie (YOLO-pose), tracking, sprongdetectie
 en het berekenen van sprongmaten (hoogte, vluchttijd, RSI, etc.), met
 zowel een command-line-route als een lokale webinterface.
 
