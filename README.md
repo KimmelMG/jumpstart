@@ -3,7 +3,13 @@
 Python-tool voor markerless sprongdetectie en -analyse (countermovement
 jumps) uit video bij meerdere personen in beeld: personen-detectie (YOLO-pose), tracking, sprongdetectie
 en het berekenen van sprongmaten (hoogte, vluchttijd, RSI, etc.), met
-zowel een command-line-route als een lokale webinterface.
+zowel een command-line-route als een lokale webinterface. 
+
+
+> [!TIP]
+> **Uitlegvideo:** [Bekijk de video (.mp4)](https://github.com/KimmelMG/jumpstart/releases/download/v1.0/Jumpstart_uitlegvideo_take2.mp4)  
+> **Pilotvalidatie en methode:** [Open het Word-document (.docx)](https://github.com/KimmelMG/jumpstart/releases/download/v1.0/Jumpstart_pilotvalidatie_methode_NL.docx)
+
 
 ## Snel starten (Windows)
 
