@@ -7,8 +7,8 @@ zowel een command-line-route als een lokale webinterface.
 
 
 > [!TIP]
-> **Uitlegvideo:** [Bekijk de video (.mp4)](https://github.com/KimmelMG/jumpstart/releases/download/v1.0/Jumpstart_uitlegvideo_take2.mp4)  
-> **Pilotvalidatie en methode:** [Open het Word-document (.docx)](https://github.com/KimmelMG/jumpstart/releases/download/v1.0/Jumpstart_pilotvalidatie_methode_NL.docx)
+> **Uitlegvideo:** [Bekijk de video](https://github.com/KimmelMG/jumpstart/releases/download/v1.0/Jumpstart_uitlegvideo_take2.mp4)  
+> **Pilotvalidatie en methode:** [Open het Word-document](https://github.com/KimmelMG/jumpstart/releases/download/v1.0/Jumpstart_pilotvalidatie_methode_NL.docx)
 
 
 ## Snel starten (Windows)
