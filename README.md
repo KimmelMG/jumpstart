@@ -86,3 +86,11 @@ bij het eerste gebruik.
 Voor installatie-details, netwerk-/firewallconfiguratie en
 telefoon/tablet-toegang op hetzelfde wifi-netwerk: zie
 `jumpstart_webapp/README.md`.
+
+## Dankwoord
+
+Jumpstart is mogelijk gemaakt door de Sportinnovator-innovatievoucher 2025 (ZonMw)
+en uitgevoerd in samenwerking tussen het Universitair Medisch Centrum Groningen (UMCG),
+de Rijksuniversiteit Groningen (RUG) en het Nederlands Handbal Verbond (NHV). 
+Aan het project droegen Mathijs Kimmel, Dr. Carlo Ferri Marini, Dr. Michel Brink, 
+Dr. Eline Nijmeijer en Richard Dik bij.
