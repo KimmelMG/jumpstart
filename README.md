@@ -23,9 +23,7 @@ zowel een command-line-route als een lokale webinterface.
    **Meer informatie -> Toch uitvoeren**.
 4. De eerste keer installeert Jumpstart een eigen Python 3.12 en alle
    onderdelen (een paar minuten, internet nodig, ongeveer 3 GB in
-   `%USERPROFILE%\.jumpstart`). Je hoeft zelf geen Python te installeren;
-   een Python die al op je computer staat (Microsoft Store, Anaconda, ...)
-   wordt bewust niet gebruikt. Daarna opent de browser vanzelf op
+   `%USERPROFILE%\.jumpstart`). Daarna opent de browser vanzelf op
    `http://127.0.0.1:8000`. Laat het zwarte venster open; sluiten stopt
    Jumpstart.
 
